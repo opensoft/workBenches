@@ -70,47 +70,78 @@ zone it describes that category and lists its benches. Long About text pages
 inside its panel; changing the focus resets its position. Missing details leave
 benches usable with a fallback description; R retries an unavailable catalog.
 
-## Harnesses and categorized Tools
+## Agent harnesses and tools
 
 Harness and Tools use the same category → list → About pattern as Benches.
-The navigation step stays **Harness**; its list is titled **Harnesses** with the
-active category. Choose a category with up/down, then Tab, Shift+Tab or Space
-enters its list without selecting a change. Tab/Shift+Tab or up on the first
-item returns to categories. Only that category's items appear. About describes
-the category while it has focus and the selected item while its list has focus.
+The navigation step stays **Harness**; its panel is **Harnesses** with the active
+category. Up/down chooses a category; Tab, Shift+Tab or Space enters its list
+without queuing anything. Tab/Shift+Tab or up on the first item returns to
+categories. About describes the focused category, group or item.
 
-| Harness category | Entries |
-|---|---|
-| TUI AI Tools | Claude Code CLI, GitHub Copilot CLI, Codex CLI, Antigravity CLI, OpenCode CLI, Pi Coding Agent |
-| GUI AI Tools | OpenCode Desktop, Qwen Code Desktop, Kimi Code Desktop, ZCode |
-| IDE extensions | GitHub Copilot — VS Code, Cline — VS Code, Continue — VS Code |
-| Workflow | spec-kit, OpenSpec, Omnigent, AgentTower |
+| Step | Category | Contents |
+|---|---|---|
+| Harness | GUI Agent Harnesses | Codex GUI, OpenCode GUI, Qwen Code Desktop, Kimi Code Desktop, ZCode, Claude Desktop |
+| Harness | CLI/TUI Agent Harnesses | 77 terminal products from the supplied inventory, with ownership groups below |
+| Harness | IDE/Editor Extensions | GitHub Copilot, Cline, Continue and Codex integrations targeting the local VS Code CLI default profile |
+| Harness | Workflow & Specification Tools | spec-kit, OpenSpec, Omnigent, AgentTower; tags distinguish specification/planning/review from orchestration |
+| Tools | IDEs & Editors | VS Code, Cursor, Kiro IDE, Antigravity IDE, Comate IDE, Neovim, AbacusAI Editor |
+| Tools | Terminals & Terminal Workspaces | Warp, Wave, Herder, Foot, tmux |
+| Tools | Networking | AmneziaVPN, 0dcloud VPN |
+| Tools | Workstation setup | Shell setup, Org workspace, mise |
 
-| Tools category | Entries |
-|---|---|
-| Editors & IDEs | VS Code, Cursor, Kiro IDE, Antigravity IDE, Comate IDE |
-| Terminals | Warp Terminal, Wave Terminal |
-| Networking | AmneziaVPN, 0dcloud VPN |
-| Workstation setup | Shell setup, Org workspace |
+A terminal/workspace hosts the agent; the agent works on the project and tools.
+Products spanning roles carry multiple tags. Codex GUI and its terminal/editor
+surfaces have distinct entries. The current ChatGPT desktop app can provide the
+Codex GUI surface; app presence alone does not establish feature/account access.
+CLI interactive/headless modes are fields of one product. Kimi Code and legacy
+Kimi CLI remain distinct, as do international Qoder/Bright Zenith and Qoder CN/
+Alibaba Cloud. DeepSeek Harness lists dsh-TUI as an optional frontend plugin,
+rather than duplicating the harness for each execution mode.
+
+### CLI ownership groups
+
+Tab still enters the terminal list directly. **F** focuses a compact group
+selector; up/down chooses a group, Tab/Space enters its list, Shift+Tab returns
+to categories, and F toggles back to the list. Left/right continues changing
+steps. Groups are All, Model-maker — USA/China/Other, Combo — Open/BYOK,
+Combo — Commercial/managed, and Specialized/research/minimal. The main list
+shows only the active group's products. Model-maker describes ownership, while
+model policy describes flexibility; Qwen can therefore be in Model-maker China
+and still have selectable providers. China-associated/uncertain ownership stays
+qualified in product metadata. Each group retains its own list window.
+
+### About metadata and evidence
+
+The canonical inventory is [setup-tool-catalog.json](../config/setup-tool-catalog.json),
+108 entries with one home category and multiple tags/additional surfaces. About
+records developer relationship/region, model policy, interface modes, execution
+location, product status, lineage, model support, autonomy and permissions.
+Interoperability has separate fields for invoking another agent and its
+mechanism, external invocation, delegation, state exchange and parallelism.
+Launching another CLI is not evidence of structured messaging or live-session
+transfer. Unknown is explicitly **Not yet verified**, never unavailable.
+
+User-supplied claims are identified at the start of About and retain source
+qualification. Documentation-backed capabilities link primary evidence and do
+not certify the installed version. Reference installation detection is independent
+of ownership/capability verification. GUI presence is separate from CLI presence;
+Kimi Code requires its package identity (including a matching exported payload for mise/pnpm wrappers), and ambiguous/unintegrated SKUs require
+manual checking. VS Code extension status applies only to its local default
+profile. Windows/WSL references remain Check manually. No status implies login.
 
 Existing managed entries keep Space/D → Review → Apply. Shell setup and Org
-workspace remain configuration-only. New desktop apps, extensions, Omnigent,
-AgentTower and additional editors are **Manual setup** reference entries:
-they have a dot instead of a checkbox, cannot be queued, and include setup
-sources in About. Manage these through their original installer. This catalog
-expansion adds no automated installers or new allowed plan keys.
+workspace remain configuration-only. Other entries are **Manual setup**:
+they have a dot instead of a checkbox, cannot be queued, and show publisher/setup
+sources when verified. Unknown publisher links are explicitly pending. No new
+installers, credential options or selection-plan keys are added.
 
-Read-only presence checks distinguish desktop launchers from CLI installations.
-Extension checks use only `code --list-extensions` for the local VS Code CLI
-default profile; they do not establish installation in Cursor, Kiro, other
-editors or other profiles. WSL reference entries say Check manually until native
-Windows inventory is integrated. Installed presence never establishes login,
-subscription access, running services or restored sessions.
-
-Both About panels use PgUp/PgDn or [/] for paging, reset when focus changes,
-and retain/clamp the page on refresh. P/G restores each step's exact category,
-zone, item and About page. Short terminals collapse categories and scroll the
-list while preserving the selected row, About and navigation footer.
+The compiler validates metadata and generates static Bash/Python snapshots:
+`python3 scripts/setup-tool-catalog.py --write`; `--check` rejects drift.
+Rendering uses only cached data/Bash builtins, with no runtime JSON parsing.
+PgUp/PgDn or [/] pages About. P/G restores category, CLI group, zone, item and
+list/About offsets. Refresh retains these and every queued change. Narrow frames
+use a two-row group selector and compact manual-status labels so names stay
+readable. Large lists reserve room for capability About text (at least five lines in an 87×40 frame). Lists scroll while retaining the focused row and About/footer.
 
 ## Keys
 
@@ -118,7 +149,8 @@ list while preserving the selected row, About and navigation footer.
 |---|---|
 | ← / → | Previous/next step; stop at the ends. |
 | ↑ / ↓ | Move within the step; scroll Review. In Benches, move within the current zone. |
-| Tab / Shift+Tab | Switch Benches, Harness or Tools category/list zones. ↑ on the first item returns to categories. |
+| Tab / Shift+Tab | Switch category/list zones; on the CLI group selector, enter the list / return to categories. |
+| F | Focus/toggle the CLI ownership group selector; up/down chooses its group. |
 | Space / D | Queue/unqueue install or update / removal; Space opens Profiles actions. |
 | Enter | Open Review, apply from Review, or open a Profiles row. |
 | P | Visit Workstation and return to the remembered step and focus. |

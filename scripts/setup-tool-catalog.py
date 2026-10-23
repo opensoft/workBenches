@@ -113,7 +113,8 @@ def validate(data):
 
 def about(entry):
     c = entry['capabilities']; i = entry['interoperability']; v = entry['verification']
-    lines = [entry['about'], '', 'Catalog basis: ' + v['basis'] + '. ' + v['note'],
+    qualifier = 'User inventory' if v['basis'] == 'user-provided' else 'Catalog entry' if v['basis'] == 'existing-catalog' else 'Documented entry'
+    lines = [qualifier + ' · ' + entry['about'], '', 'Catalog basis: ' + v['basis'] + '. ' + v['note'],
              'Developer: ' + entry['developer'], 'Developer relationship: ' + entry['developerRelationship'],
              'Developer region: ' + entry['developerRegion'], 'Model policy: ' + entry['modelPolicy'],
              'Tags: ' + ', '.join(entry['tags']), 'Terminal modes: ' + ', '.join(entry['terminalInterface']),

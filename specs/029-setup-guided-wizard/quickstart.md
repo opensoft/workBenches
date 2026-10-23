@@ -193,3 +193,10 @@ Run `python3 devcontainer.test/test-workstation-lifecycle.py` for the additional
 ### Harness category review (029-A06)
 
 Harness now starts on categories. Tab enters TUI AI Tools before selecting an existing CLI; real-host Codex sequences add Tab between the second Right and the two Down keys. Browse GUI AI Tools, IDE extensions and Workflow with the same category/list controls as Benches. Tools groups Editors & IDEs together. New reference entries are manual-only: About supplies setup sources, presence is not login, and Space/D cannot queue them. Extension status targets only the local VS Code CLI default profile; Windows/WSL references require manual checking.
+
+
+### Expanded catalog and CLI groups
+
+The product inventory is governed by setup-agent-tool-catalog. Check or regenerate its static snapshots with `python3 scripts/setup-tool-catalog.py --check` / `--write`. Run `python3 devcontainer.test/test-tool-catalog.py` directly; the wizard suite also loads these tests so the existing CI job checks catalog coverage and snapshot drift without a workflow change.
+
+Preview Harness → CLI/TUI Agent Harnesses, press F, choose an ownership group with up/down and Tab into its list. Check a long About and return via P/G, then refresh: group/item/list/About position and all selected managed changes stay intact. Browse GUI agents separately from IDEs/editors and extensions. Confirm product source qualifications and manual-only controls, including separate Kimi/Qoder identities. Do not infer model access, agent cooperation or active-session transfer from installation evidence.

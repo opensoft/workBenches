@@ -1345,7 +1345,9 @@
       "lineage": "original",
       "additionalSurfaces": [],
       "tags": [
-        "coding agent"
+        "coding agent",
+        "China-associated",
+        "ownership unverified"
       ],
       "about": "China-associated combo CLI. Ownership and current availability need primary-source verification.",
       "capabilities": {
@@ -1397,7 +1399,9 @@
       "lineage": "original",
       "additionalSurfaces": [],
       "tags": [
-        "coding agent"
+        "coding agent",
+        "China-associated",
+        "corporate affiliate"
       ],
       "about": "China-associated multi-model CLI with plugins, MCP and headless automation; developer attribution is user-provided.",
       "capabilities": {

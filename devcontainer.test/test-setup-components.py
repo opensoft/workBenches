@@ -180,11 +180,13 @@ class ReferenceCatalogTests(unittest.TestCase):
         patch.object(components.Path, 'home', return_value=self.home).start()
         self.which = patch.object(components, 'native_which', return_value=None).start()
         components.vscode_extensions.cache_clear()
+        components.reference_is_wsl.cache_clear()
         self.addCleanup(components.vscode_extensions.cache_clear)
+        self.addCleanup(components.reference_is_wsl.cache_clear)
 
     def test_terminal_installations_do_not_imply_desktop_installations(self):
-        self.which.side_effect = lambda name: '/fixture/' + name if name in ('opencode', 'qwen', 'kimi', 'kiro-cli', 'agy') else None
-        for key in ('opencode_desktop', 'qwen_desktop', 'kimi_desktop', 'kiro_ide', 'antigravity_ide'):
+        self.which.side_effect = lambda name: '/fixture/' + name if name in ('codex', 'opencode', 'qwen', 'kimi', 'kiro-cli', 'agy') else None
+        for key in ('codex_gui', 'opencode_desktop', 'qwen_desktop', 'kimi_desktop', 'kiro_ide', 'antigravity_ide'):
             self.assertFalse(components.reference_installed(key), key)
         self.which.side_effect = lambda name: '/fixture/antigravity-ide' if name == 'antigravity-ide' else None
         self.assertTrue(components.reference_installed('antigravity_ide'))
@@ -220,6 +222,57 @@ class ReferenceCatalogTests(unittest.TestCase):
         with patch.dict(os.environ, {'WSL_DISTRO_NAME': 'fixture'}), patch.object(components, 'native_read_text', return_value='Linux'), patch.object(components, 'reference_installed') as probe:
             self.assertEqual(components.reference_status('cursor_ide'), 'needs check')
             probe.assert_not_called()
+
+    def test_current_kimi_requires_its_package_and_never_implies_legacy(self):
+        package=self.home/'node_modules/@moonshot-ai/kimi-code'
+        package.mkdir(parents=True)
+        (package/'package.json').write_text(json.dumps({'name':'@moonshot-ai/kimi-code'}))
+        executable=package/'cli.js'; executable.write_text('fixture'); executable.chmod(0o755)
+        self.which.side_effect=lambda name:str(executable) if name=='kimi' else None
+        self.assertTrue(components.reference_installed('kimi_code'))
+        self.assertFalse(components.reference_installed('kimi_legacy'))
+        (package/'package.json').write_text(json.dumps({'name':'other-kimi-package'}))
+        self.assertFalse(components.reference_installed('kimi_code'))
+        with patch.object(components,'reference_installed') as probe:
+            for key in ('kimi_legacy','qoder_cli','qoder_cn_cli','grok_build'):
+                self.assertEqual(components.reference_status(key),'needs check')
+            probe.assert_not_called()
+
+    def test_mise_package_wrappers_require_a_matching_export_and_payload(self):
+        modules=self.home/'node_modules'; binary=modules/'.bin/kimi'
+        binary.parent.mkdir(parents=True); binary.write_text('wrapper fixture'); binary.chmod(0o755)
+        package=modules/'@moonshot-ai/kimi-code'; package.mkdir(parents=True)
+        metadata=package/'package.json'; metadata.write_text(json.dumps({'name':'@moonshot-ai/kimi-code','bin':{'kimi':'dist/main.mjs'}}))
+        payload=package/'dist/main.mjs'; payload.parent.mkdir(); payload.write_text('fixture'); payload.chmod(0o755)
+        self.which.side_effect=lambda name:str(binary) if name=='kimi' else None
+        self.assertTrue(components.reference_installed('kimi_code'))
+        self.assertFalse(components.reference_installed('kimi_legacy'))
+        metadata.write_text(json.dumps({'name':'@moonshot-ai/kimi-code','bin':{'different-command':'dist/main.mjs'}}))
+        self.assertFalse(components.reference_installed('kimi_code'))
+        metadata.write_text(json.dumps({'name':'@moonshot-ai/kimi-code','bin':{'kimi':'../../other'}}))
+        self.assertFalse(components.reference_installed('kimi_code'))
+        metadata.write_text(json.dumps({'name':'@moonshot-ai/kimi-code','bin':{'kimi':'dist/main.mjs'}}))
+        metadata.write_text('[]')
+        self.assertFalse(components.reference_installed('kimi_code'))
+        metadata.write_text(json.dumps({'name':'@moonshot-ai/kimi-code','bin':{'kimi':'dist/main.mjs'}}))
+        payload.unlink()
+        self.assertFalse(components.reference_installed('kimi_code'))
+
+    def test_desktop_exec_metadata_is_not_run_and_needs_a_known_executable(self):
+        data=self.home/'data'; directory=data/'applications'; directory.mkdir(parents=True)
+        desktop=directory/'abacusai.desktop'
+        app=self.home/'vendor/abacusai-desktop'; app.parent.mkdir()
+        app.write_text('fixture'); app.chmod(0o755)
+        sentinel=self.home/'executed'
+        with patch.dict(os.environ,{'XDG_DATA_HOME':str(data),'XDG_DATA_DIRS':str(self.home/'empty')}):
+            desktop.write_text('[Desktop Entry]\nType=Application\nExec='+str(app)+' $(touch '+str(sentinel)+')\n')
+            self.assertTrue(components.reference_installed('abacus_editor'))
+            self.assertFalse(sentinel.exists())
+            app.unlink()
+            self.assertFalse(components.reference_installed('abacus_editor'))
+            desktop.write_text('[Desktop Entry]\nExec=sh -c "touch '+str(sentinel)+'"\n')
+            self.assertFalse(components.reference_installed('abacus_editor'))
+            self.assertFalse(sentinel.exists())
 
     def test_manual_references_cannot_be_removed_or_accepted_as_plan_keys(self):
         import setup_selection

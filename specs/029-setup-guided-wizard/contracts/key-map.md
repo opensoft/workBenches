@@ -92,3 +92,7 @@ Harness retains its item navigation and selection keys, with About paging via Pg
 
 ### Refinement 029-A06
 Harness now shares Tools category/list keys: Up/Down choose categories; Tab/Shift+Tab/Space enters the list without selecting; Tab/Shift+Tab or Up on the first item returns. Item Space/D queues only existing managed components. Manual reference rows have no checkbox and ignore action keys. Preserve each step's category, zone, global item index and per-category list offset plus shared About page/anchor across P/G; refresh retains these and the queue. Left/right remains step navigation. Harness defaults to TUI AI Tools; Tools defaults to Editors & IDEs.
+
+
+### Product catalog extension (T039J)
+CLI/TUI Agent Harnesses adds an optional F group selector (All, model-maker USA/China/Other, combo open/BYOK, combo commercial/managed, specialized/research/minimal). Up/down chooses the group while it has focus; Tab/Space enters its list, Shift+Tab returns to categories, F toggles group/list. Existing Tab from categories still enters the list directly. Each group has its own list offset. P/G remembers CLI group along with category/zone/item/About; R retains group and queued actions. No F action is dispatched outside the CLI category. Left/right remain step navigation. Manual references ignore Space/D actions in every group.

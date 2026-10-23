@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Inspect installation artifacts and remove explicitly selected components."""
 import argparse
+import configparser
 import getpass
 import functools
 import json
@@ -8,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import shlex
 import subprocess
 import sys
 
@@ -64,18 +66,10 @@ FLATPAKS = {'vscode': 'com.visualstudio.code', 'warp': 'dev.warp.Warp',
 
 # Reference-only catalog entries. They deliberately do not extend the selection
 # allowlist or package-removal table. Desktop launchers are distinct from CLIs.
-REFERENCES = {
-    'opencode_desktop': ('opencode-desktop',),
-    'qwen_desktop': ('qwen-code-desktop',),
-    'kimi_desktop': ('kimi-code-desktop',), 'zcode_desktop': ('zcode',),
-    'omnigent': ('omnigent',), 'agenttower': ('agenttower',),
-    'cursor_ide': ('cursor',), 'kiro_ide': ('kiro',),
-    'antigravity_ide': ('antigravity-ide', 'antigravity'), 'comate_ide': ('comate',),
-    'copilot_vscode': (), 'cline_vscode': (), 'continue_vscode': (),
-}
-EXTENSIONS = {'copilot_vscode': ('github.copilot', 'github.copilot-chat'),
-              'cline_vscode': ('saoudrizwan.claude-dev',),
-              'continue_vscode': ('continue.continue',)}
+from setup_tool_catalog_data import REFERENCE_DETECTION
+
+REFERENCES = {key: tuple(row['commands']) for key, row in REFERENCE_DETECTION.items()}
+EXTENSIONS = {key: tuple(row['extensionIds']) for key, row in REFERENCE_DETECTION.items() if row['extensionIds']}
 
 
 @functools.lru_cache(maxsize=1)
@@ -93,23 +87,90 @@ def vscode_extensions():
     return {line.strip().lower() for line in row.stdout.splitlines()}
 
 
+def reference_package_matches(path, package):
+    """Distinguish identically named CLIs by actual package metadata, not name."""
+    try:
+        resolved = native_resolve(Path(path))
+    except OSError:
+        return False
+    for directory in list(resolved.parents)[:8]:
+        try:
+            metadata = json.loads(native_read_text(directory / 'package.json'))
+        except (OSError, ValueError):
+            continue
+        if isinstance(metadata, dict) and metadata.get('name') == package:
+            return True
+    # mise/pnpm can install a regular .bin wrapper instead of a symlink into
+    # its package. Require the matching package, declared command and payload.
+    launcher = Path(path)
+    if launcher.parent.name == '.bin':
+        package_dir = launcher.parent.parent / package
+        try:
+            metadata = json.loads(native_read_text(package_dir / 'package.json'))
+            exported = metadata.get('bin', {}) if isinstance(metadata, dict) else {}
+            relative = Path(exported[launcher.name]) if isinstance(exported, dict) else None
+            if isinstance(metadata, dict) and metadata.get('name') == package and relative and not relative.is_absolute() and '..' not in relative.parts:
+                payload = package_dir / relative
+                return native_resolve(payload).is_relative_to(native_resolve(package_dir)) and native_access(payload, os.X_OK)
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+    return False
+
+
+def reference_desktop_installed(component):
+    """Read desktop launchers as data. Never evaluate/execute an Exec line."""
+    row = REFERENCE_DETECTION[component]
+    roots = [Path(os.environ.get('XDG_DATA_HOME', Path.home() / '.local/share')) / 'applications']
+    roots += [Path(directory) / 'applications' for directory in os.environ.get('XDG_DATA_DIRS', '/usr/local/share:/usr/share').split(':') if directory]
+    for directory in roots:
+        for filename in row['desktopIds']:
+            try:
+                parser = configparser.ConfigParser(interpolation=None, strict=False)
+                parser.read_string(native_read_text(directory / filename))
+                args = shlex.split(parser['Desktop Entry'].get('Exec', ''))
+                if not args or Path(args[0]).name not in row['commands']:
+                    continue
+                launcher = Path(args[0])
+                if launcher.is_absolute():
+                    if native_access(launcher, os.X_OK):
+                        return True
+                elif native_which(args[0]):
+                    return True
+            except (OSError, ValueError, KeyError, configparser.Error):
+                continue
+    return False
+
+
 def reference_installed(component):
     if component in EXTENSIONS:
         installed = vscode_extensions()
         if installed is None:
             raise ValueError('VS Code extension inventory failed')
         return bool(set(EXTENSIONS[component]) & installed)
+    metadata = REFERENCE_DETECTION[component]
     for command in REFERENCES[component]:
-        if native_which(command) or native_access(Path.home() / '.local/bin' / command, os.X_OK):
+        located = native_which(command)
+        if not located:
+            local = Path.home() / '.local/bin' / command
+            if native_access(local, os.X_OK):
+                located = str(local)
+        if located and (not metadata['npmPackage'] or reference_package_matches(located, metadata['npmPackage'])):
             return True
-    return False
+    return reference_desktop_installed(component) if metadata['desktopIds'] else False
+
+
+@functools.lru_cache(maxsize=1)
+def reference_is_wsl():
+    release = native_read_text(Path('/proc/sys/kernel/osrelease')).lower() if sys.platform.startswith('linux') else ''
+    return bool(os.environ.get('WSL_DISTRO_NAME') or 'microsoft' in release)
 
 
 def reference_status(component):
-    # Windows desktop apps and remote editor profiles need their own inventory;
-    # don't report Linux-side command wrappers as Windows installation evidence.
-    release = native_read_text(Path('/proc/sys/kernel/osrelease')).lower() if sys.platform.startswith('linux') else ''
-    if os.environ.get('WSL_DISTRO_NAME') or 'microsoft' in release:
+    metadata = REFERENCE_DETECTION[component]
+    if not any(metadata[key] for key in ('commands', 'desktopIds', 'extensionIds')):
+        return 'needs check'
+    # Linux command wrappers cannot establish Windows app/profile installation.
+    if reference_is_wsl():
         return 'needs check'
     return 'installed' if reference_installed(component) else 'not installed'
 
@@ -412,6 +473,7 @@ def tool_statuses():
         globals()['native_which'] = original_which
         globals()['snap_packages'] = original_snaps
         vscode_extensions.cache_clear()
+        reference_is_wsl.cache_clear()
 
 
 def main():

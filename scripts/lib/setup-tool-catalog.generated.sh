@@ -274,7 +274,7 @@ declare -A setup_reference_labels=(
     [mise]=mise
 )
 declare -A component_about=(
-    [claude_cli]='First-party Claude coding agent; terminal is one of several surfaces.
+    [claude_cli]='User inventory · First-party Claude coding agent; terminal is one of several surfaces.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Anthropic
@@ -301,7 +301,7 @@ Delegation model: Native subagents; cross-product handoff not yet verified.
 State exchange: Project/shared files; cross-product structured messaging and live-session transfer are not yet verified.
 Parallel execution: Not yet verified
 Capability evidence: https://code.claude.com/docs/en/headless'
-    [copilot_cli]='Platform-led multi-provider coding CLI; maker relationship follows corporate ownership.
+    [copilot_cli]='User inventory · Platform-led multi-provider coding CLI; maker relationship follows corporate ownership.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: GitHub / Microsoft
@@ -328,7 +328,7 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [codex_cli]='Local terminal coding harness with interactive and noninteractive execution.
+    [codex_cli]='User inventory · Local terminal coding harness with interactive and noninteractive execution.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: OpenAI
@@ -356,7 +356,7 @@ State exchange: Project/shared files; cross-product structured messaging and liv
 Parallel execution: Not yet verified
 Capability evidence: https://learn.chatgpt.com/docs/non-interactive-mode
 Capability evidence: https://developers.openai.com/blog/codex-as-a-platform'
-    [antigravity_cli]='Terminal interface sharing the Antigravity agent core; separate from the IDE.
+    [antigravity_cli]='User inventory · Terminal interface sharing the Antigravity agent core; separate from the IDE.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Google
@@ -383,7 +383,7 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [opencode_cli]='Multi-provider coding harness with TUI; desktop and editor integration are separate surfaces.
+    [opencode_cli]='User inventory · Multi-provider coding harness with TUI; desktop and editor integration are separate surfaces.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Anomaly / OpenCode
@@ -410,7 +410,7 @@ Delegation model: Not yet verified
 State exchange: Project/shared files; cross-product structured messaging and live-session transfer are not yet verified.
 Parallel execution: Not yet verified
 Capability evidence: https://opencode.ai/docs/cli/'
-    [pi_cli]='Minimal extensible terminal coding harness with provider abstraction.
+    [pi_cli]='User inventory · Minimal extensible terminal coding harness with provider abstraction.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Pi / pi-mono
@@ -437,7 +437,7 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [gemini_cli]='Open-source terminal agent. Separate product from Antigravity CLI.
+    [gemini_cli]='User inventory · Open-source terminal agent. Separate product from Antigravity CLI.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Google
@@ -467,7 +467,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://github.com/google-gemini/gemini-cli'
-    [jules_tools]='CLI controls remotely executed Jules tasks; not a local coding-agent runtime.
+    [jules_tools]='User inventory · CLI controls remotely executed Jules tasks; not a local coding-agent runtime.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Google
@@ -497,7 +497,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [grok_build]='Grok-centered coding harness/TUI with configurable endpoints; distinct from community Grok CLI projects.
+    [grok_build]='User inventory · Grok-centered coding harness/TUI with configurable endpoints; distinct from community Grok CLI projects.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: xAI
@@ -527,7 +527,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [muse_code]='Terminal/CI coding agent centered on Meta Muse models.
+    [muse_code]='User inventory · Terminal/CI coding agent centered on Meta Muse models.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Meta
@@ -557,7 +557,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [kiro_cli]='Multi-model client under Amazon ownership; not a Nova-only client.
+    [kiro_cli]='User inventory · Multi-model client under Amazon ownership; not a Nova-only client.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: AWS / Amazon
@@ -587,7 +587,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://kiro.dev/docs/cli/'
-    [bob_shell]='Terminal surface of IBM Bob, supporting Granite and other providers; separate from the Bob IDE.
+    [bob_shell]='User inventory · Terminal surface of IBM Bob, supporting Granite and other providers; separate from the Bob IDE.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: IBM
@@ -617,7 +617,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [devin_cli]='Hybrid coding product with frontier models and Cognition SWE-2.
+    [devin_cli]='User inventory · Hybrid coding product with frontier models and Cognition SWE-2.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Cognition
@@ -647,7 +647,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [pool_cli]='First-party terminal agent using Laguna models, with TUI and headless execution.
+    [pool_cli]='User inventory · First-party terminal agent using Laguna models, with TUI and headless execution.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Poolside
@@ -677,7 +677,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [qwen_cli]='Official Qwen coding CLI; also supports third-party or local endpoints.
+    [qwen_cli]='User inventory · Official Qwen coding CLI; also supports third-party or local endpoints.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Alibaba / Qwen
@@ -707,7 +707,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://github.com/QwenLM/qwen-code'
-    [kimi_code]='Current coding-agent product; keep separate from the earlier Kimi CLI project.
+    [kimi_code]='User inventory · Current coding-agent product; keep separate from the earlier Kimi CLI project.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Moonshot AI
@@ -737,7 +737,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://github.com/MoonshotAI/kimi-code'
-    [kimi_legacy]='Separate earlier project transitioning toward Kimi Code. A kimi executable alone cannot identify which project is installed.
+    [kimi_legacy]='User inventory · Separate earlier project transitioning toward Kimi Code. A kimi executable alone cannot identify which project is installed.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login. A shared kimi command is deliberately not used as legacy-product installation evidence.
 Developer: Moonshot AI
@@ -767,7 +767,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [zcode_cli]='Terminal surface alongside ZCode desktop; GLM-centered with optional third-party endpoints.
+    [zcode_cli]='User inventory · Terminal surface alongside ZCode desktop; GLM-centered with optional third-party endpoints.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Z.ai / Zhipu
@@ -797,7 +797,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [codebuddy_cli]='Tencent/Hunyuan platform CLI; distinct from CodeBuddy IDE, plugins and WorkBuddy.
+    [codebuddy_cli]='User inventory · Tencent/Hunyuan platform CLI; distinct from CodeBuddy IDE, plugins and WorkBuddy.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Tencent
@@ -827,7 +827,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [trae_agent]='Research software-engineering CLI; distinct from the commercial TRAE IDE.
+    [trae_agent]='User inventory · Research software-engineering CLI; distinct from the commercial TRAE IDE.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: ByteDance
@@ -857,7 +857,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [mimo_code]='Terminal agent with TUI and noninteractive modes, supporting MiMo and other providers.
+    [mimo_code]='User inventory · Terminal agent with TUI and noninteractive modes, supporting MiMo and other providers.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Xiaomi
@@ -887,7 +887,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [qoder_cn_cli]='Chinese regional SKU; distinct operator/terms from international Qoder and distinct from Qwen Code.
+    [qoder_cn_cli]='User inventory · Chinese regional SKU; distinct operator/terms from international Qoder and distinct from Qwen Code.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Alibaba Cloud
@@ -917,7 +917,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [vibe_cli]='Mistral-centered terminal agent with configurable providers; Vibe also names a broader product family.
+    [vibe_cli]='User inventory · Mistral-centered terminal agent with configurable providers; Vibe also names a broader product family.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Mistral AI (France)
@@ -947,14 +947,14 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [iflow_cli]='China-associated combo CLI. Ownership and current availability need primary-source verification.
+    [iflow_cli]='User inventory · China-associated combo CLI. Ownership and current availability need primary-source verification.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Alibaba / Xinliu association (unverified)
 Developer relationship: unverified
 Developer region: China
 Model policy: selectable-providers
-Tags: coding agent
+Tags: coding agent, China-associated, ownership unverified
 Terminal modes: not yet verified
 Execution location: unverified
 Product status: maintenance-uncertain
@@ -977,14 +977,14 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [neovate_code]='China-associated multi-model CLI with plugins, MCP and headless automation; developer attribution is user-provided.
+    [neovate_code]='User inventory · China-associated multi-model CLI with plugins, MCP and headless automation; developer attribution is user-provided.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Ant Group
 Developer relationship: corporate-affiliate
 Developer region: China
 Model policy: selectable-providers
-Tags: coding agent
+Tags: coding agent, China-associated, corporate affiliate
 Terminal modes: not yet verified, headless
 Execution location: unverified
 Product status: current
@@ -1007,7 +1007,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [crush_cli]='Multi-provider terminal-first coding TUI.
+    [crush_cli]='User inventory · Multi-provider terminal-first coding TUI.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Charmbracelet
@@ -1037,7 +1037,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://github.com/charmbracelet/crush'
-    [aider_cli]='Git-oriented terminal pair programming and multi-file editing.
+    [aider_cli]='User inventory · Git-oriented terminal pair programming and multi-file editing.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Aider project
@@ -1067,7 +1067,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [goose_cli]='Extensible local agent with CLI, multiple providers and MCP integration; organizational attribution is user-provided.
+    [goose_cli]='User inventory · Extensible local agent with CLI, multiple providers and MCP integration; organizational attribution is user-provided.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: AAIF / Linux Foundation (originated at Block)
@@ -1097,7 +1097,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [cline_cli]='Model-agnostic terminal agent with file, command and browser tools; editor integration is a separate entry.
+    [cline_cli]='User inventory · Model-agnostic terminal agent with file, command and browser tools; editor integration is a separate entry.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Cline
@@ -1127,7 +1127,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [continue_cli]='Terminal coding agent with multi-model and local-model options; separate from its editor extension.
+    [continue_cli]='User inventory · Terminal coding agent with multi-model and local-model options; separate from its editor extension.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Continue
@@ -1157,7 +1157,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [kilo_cli]='CLI with orchestration, skills and checkpoints.
+    [kilo_cli]='User inventory · CLI with orchestration, skills and checkpoints.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Kilo
@@ -1187,7 +1187,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [roo_cli]='Terminal agent with architect, code, debug and orchestration modes.
+    [roo_cli]='User inventory · Terminal agent with architect, code, debug and orchestration modes.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Roo Code
@@ -1217,7 +1217,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [plandex_cli]='Plan-first terminal agent for larger multi-file work.
+    [plandex_cli]='User inventory · Plan-first terminal agent for larger multi-file work.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Plandex
@@ -1247,7 +1247,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [codebuff_cli]='Multi-agent coding assistant with a CLI.
+    [codebuff_cli]='User inventory · Multi-agent coding assistant with a CLI.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Codebuff
@@ -1277,7 +1277,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [forgecode_cli]='Multi-model CLI with task management and custom agents.
+    [forgecode_cli]='User inventory · Multi-model CLI with task management and custom agents.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: ForgeCode
@@ -1307,7 +1307,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [gptme_cli]='Terminal agent for file edits, code execution and persistent workflows.
+    [gptme_cli]='User inventory · Terminal agent for file edits, code execution and persistent workflows.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: gptme
@@ -1337,7 +1337,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [letta_code]='Memory-first coding CLI with model-agnostic execution.
+    [letta_code]='User inventory · Memory-first coding CLI with model-agnostic execution.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Letta
@@ -1367,7 +1367,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [nanocoder_cli]='Local-first CLI using Ollama, OpenRouter and compatible APIs.
+    [nanocoder_cli]='User inventory · Local-first CLI using Ollama, OpenRouter and compatible APIs.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Nanocoder
@@ -1397,7 +1397,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [kode_cli]='Multi-provider terminal coding agent.
+    [kode_cli]='User inventory · Multi-provider terminal coding agent.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: ShareAI
@@ -1427,7 +1427,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [codewhale_cli]='Bring-your-own-model Rust coding agent with TUI and headless modes.
+    [codewhale_cli]='User inventory · Bring-your-own-model Rust coding agent with TUI and headless modes.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Codewhale
@@ -1457,7 +1457,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [jcode_cli]='Rust coding TUI with multiple providers and parallel-agent features.
+    [jcode_cli]='User inventory · Rust coding TUI with multiple providers and parallel-agent features.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: jcode
@@ -1487,7 +1487,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [reasonix_cli]='Coding engine with terminal, desktop, browser and editor surfaces.
+    [reasonix_cli]='User inventory · Coding engine with terminal, desktop, browser and editor surfaces.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Reasonix
@@ -1517,7 +1517,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [oh_my_pi]='Separate Pi-related terminal implementation; not upstream Pi.
+    [oh_my_pi]='User inventory · Separate Pi-related terminal implementation; not upstream Pi.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: OH-MY-PI project
@@ -1547,7 +1547,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [cursor_cli]='Terminal agent connected to Cursor model catalog/ecosystem; distinct from Cursor editor.
+    [cursor_cli]='User inventory · Terminal agent connected to Cursor model catalog/ecosystem; distinct from Cursor editor.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Cursor
@@ -1577,7 +1577,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [amp_cli]='Coding CLI selecting different models by operating mode.
+    [amp_cli]='User inventory · Coding CLI selecting different models by operating mode.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Amp (Sourcegraph origin)
@@ -1607,7 +1607,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [droid_cli]='Multi-model coding CLI with custom agents and headless execution.
+    [droid_cli]='User inventory · Multi-model coding CLI with custom agents and headless execution.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Factory
@@ -1637,7 +1637,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [auggie_cli]='Interactive CLI with noninteractive automation.
+    [auggie_cli]='User inventory · Interactive CLI with noninteractive automation.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Augment Code
@@ -1667,7 +1667,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [junie_cli]='Multi-model CLI with planning/headless workflows; early access.
+    [junie_cli]='User inventory · Multi-model CLI with planning/headless workflows; early access.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: JetBrains
@@ -1697,7 +1697,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [tabnine_cli]='Enterprise terminal assistant distributed through a container.
+    [tabnine_cli]='User inventory · Enterprise terminal assistant distributed through a container.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Tabnine
@@ -1727,7 +1727,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [mentat_cli]='Terminal control surface for remote coding agents; not solely a local runtime.
+    [mentat_cli]='User inventory · Terminal control surface for remote coding agents; not solely a local runtime.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Mentat
@@ -1757,7 +1757,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [ante_cli]='Terminal agent supporting multiple providers and local inference; research preview.
+    [ante_cli]='User inventory · Terminal agent supporting multiple providers and local inference; research preview.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Antigma Labs
@@ -1787,7 +1787,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [thegitai_cli]='Hosted multi-model coding agent accessed through a terminal client.
+    [thegitai_cli]='User inventory · Hosted multi-model coding agent accessed through a terminal client.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: TheGitAI
@@ -1817,7 +1817,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [qoder_cli]='International SKU/operator with regional terms distinct from Alibaba Cloud Qoder CN.
+    [qoder_cli]='User inventory · International SKU/operator with regional terms distinct from Alibaba Cloud Qoder CN.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Bright Zenith (Singapore)
@@ -1847,7 +1847,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [openhands_cli]='CLI entry into an autonomous software-engineering environment.
+    [openhands_cli]='User inventory · CLI entry into an autonomous software-engineering environment.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: OpenHands project
@@ -1877,7 +1877,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [swe_agent]='Repository issue-resolution agent used in research/evaluation.
+    [swe_agent]='User inventory · Repository issue-resolution agent used in research/evaluation.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: SWE-agent project
@@ -1907,7 +1907,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [mini_swe_agent]='Small inspectable command-line coding-agent implementation.
+    [mini_swe_agent]='User inventory · Small inspectable command-line coding-agent implementation.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: mini-SWE-agent project
@@ -1937,7 +1937,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [autocoderover]='Automated issue-resolution agent using code search/analysis.
+    [autocoderover]='User inventory · Automated issue-resolution agent using code search/analysis.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: AutoCodeRover project
@@ -1967,7 +1967,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [devon_cli]='Terminal pair-programming TUI with planning, implementation and debugging.
+    [devon_cli]='User inventory · Terminal pair-programming TUI with planning, implementation and debugging.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Devon project
@@ -1997,7 +1997,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [ra_aid]='Autonomous research/plan/implement pipeline with optional Aider integration.
+    [ra_aid]='User inventory · Autonomous research/plan/implement pipeline with optional Aider integration.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: RA.Aid project
@@ -2027,7 +2027,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [deep_agents_code]='Framework-derived terminal agent with tools, subagents and headless execution.
+    [deep_agents_code]='User inventory · Framework-derived terminal agent with tools, subagents and headless execution.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: LangChain
@@ -2057,7 +2057,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [pydantic_deep_agents]='Coding agent and Python library with configurable models and optional sandboxing.
+    [pydantic_deep_agents]='User inventory · Coding agent and Python library with configurable models and optional sandboxing.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Pydantic project
@@ -2087,7 +2087,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [tau_cli]='Small provider-neutral educational Python CLI/TUI.
+    [tau_cli]='User inventory · Small provider-neutral educational Python CLI/TUI.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Tau project
@@ -2117,7 +2117,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [dexto_cli]='General agent/coding runtime with CLI, web, API and delegation.
+    [dexto_cli]='User inventory · General agent/coding runtime with CLI, web, API and delegation.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Dexto project
@@ -2147,7 +2147,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [atomic_agent]='Local-first coding agent with TUI, noninteractive modes and local/cloud model support.
+    [atomic_agent]='User inventory · Local-first coding agent with TUI, noninteractive modes and local/cloud model support.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Atomic Agent project
@@ -2177,7 +2177,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [bitfun_cli]='Multi-surface agent with TUI/headless CLI alongside an independently built desktop app.
+    [bitfun_cli]='User inventory · Multi-surface agent with TUI/headless CLI alongside an independently built desktop app.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: BitFun project
@@ -2207,7 +2207,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [maki_cli]='Extensible Rust coding TUI with Lua plugins and structured tools.
+    [maki_cli]='User inventory · Extensible Rust coding TUI with Lua plugins and structured tools.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Maki project
@@ -2237,7 +2237,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [vt_code]='Multi-provider terminal coding agent with shell-safety features.
+    [vt_code]='User inventory · Multi-provider terminal coding agent with shell-safety features.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: VT Code project
@@ -2267,7 +2267,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [hax_cli]='Minimal C implementation with local-model/compatible-endpoint support.
+    [hax_cli]='User inventory · Minimal C implementation with local-model/compatible-endpoint support.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: hax project
@@ -2297,7 +2297,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [agentty_cli]='Native C++ terminal agent with model abstraction and sandboxing.
+    [agentty_cli]='User inventory · Native C++ terminal agent with model abstraction and sandboxing.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: agentty project
@@ -2327,7 +2327,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [cecli]='Community continuation/fork of Aider.
+    [cecli]='User inventory · Community continuation/fork of Aider.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: cecli project
@@ -2357,7 +2357,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [every_code]='Codex-derived CLI with multi-provider orchestration and automation.
+    [every_code]='User inventory · Codex-derived CLI with multi-provider orchestration and automation.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Every Code project
@@ -2387,7 +2387,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [open_codex]='Lightweight multi-provider Codex fork.
+    [open_codex]='User inventory · Lightweight multi-provider Codex fork.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: open-codex project
@@ -2417,7 +2417,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [nori_cli]='Codex-derived unified terminal interface for several providers.
+    [nori_cli]='User inventory · Codex-derived unified terminal interface for several providers.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: nori-cli project
@@ -2447,7 +2447,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [hermes_agent]='General-purpose model-maker agent that can code; not a coding-only or Nous-only client.
+    [hermes_agent]='User inventory · General-purpose model-maker agent that can code; not a coding-only or Nous-only client.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Nous Research
@@ -2477,7 +2477,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [prime_agent]='Model-maker-associated coding/research agent with persistent Python execution, built on Pi; developer region unverified.
+    [prime_agent]='User inventory · Model-maker-associated coding/research agent with persistent Python execution, built on Pi; developer region unverified.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Prime Intellect
@@ -2507,7 +2507,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [open_interpreter]='General-purpose execution agent; not a coding-first harness.
+    [open_interpreter]='User inventory · General-purpose execution agent; not a coding-first harness.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Open Interpreter project
@@ -2537,7 +2537,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [dsh_cli]='Plugin-oriented harness with CLI launch/configuration tools. Optional dsh-TUI frontend is a separate plugin; terminal modes belong to this one harness entry.
+    [dsh_cli]='User inventory · Plugin-oriented harness with CLI launch/configuration tools. Optional dsh-TUI frontend is a separate plugin; terminal modes belong to this one harness entry.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: DeepSeek
@@ -2568,7 +2568,7 @@ Manual setup: manage installation/update/removal with the original publisher or 
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://github.com/deepseek-ai/deepseek-harness
 Setup/source: https://github.com/ccch1mneyyy/dsh-TUI'
-    [opencode_desktop]='Desktop AI coding workspace. Use it for project conversations and code changes. The OpenCode CLI is a separate installation.
+    [opencode_desktop]='Catalog entry · Desktop AI coding workspace. Use it for project conversations and code changes. The OpenCode CLI is a separate installation.
 
 Catalog basis: existing-catalog. Retained catalog entry; detailed ownership and capabilities have not been independently cataloged.
 Developer: Not yet verified
@@ -2598,7 +2598,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://opencode.ai/download'
-    [qwen_desktop]='Graphical Qwen Code project workspace. Use it for coding-agent sessions outside the terminal.
+    [qwen_desktop]='Catalog entry · Graphical Qwen Code project workspace. Use it for coding-agent sessions outside the terminal.
 
 Catalog basis: existing-catalog. Retained catalog entry; detailed ownership and capabilities have not been independently cataloged.
 Developer: Not yet verified
@@ -2628,7 +2628,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://github.com/QwenLM/qwen-code/releases'
-    [kimi_desktop]='Graphical Kimi Code project workspace. Use it for interactive coding-agent sessions.
+    [kimi_desktop]='Catalog entry · Graphical Kimi Code project workspace. Use it for interactive coding-agent sessions.
 
 Catalog basis: existing-catalog. Retained catalog entry; detailed ownership and capabilities have not been independently cataloged.
 Developer: Not yet verified
@@ -2658,7 +2658,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://www.kimi.com/en/help/kimi-code/desktop-getting-started'
-    [zcode_desktop]='Desktop development workspace powered by ZCode Agent.
+    [zcode_desktop]='Catalog entry · Desktop development workspace powered by ZCode Agent.
 
 Catalog basis: existing-catalog. Retained catalog entry; detailed ownership and capabilities have not been independently cataloged.
 Developer: Not yet verified
@@ -2688,7 +2688,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://zcode.z.ai/en/docs/install'
-    [codex_gui]='Graphical coding-agent surface, available through the current ChatGPT desktop app. Distinct from Codex CLI/TUI and its editor integration. Application presence does not establish feature/account access.
+    [codex_gui]='User inventory · Graphical coding-agent surface, available through the current ChatGPT desktop app. Distinct from Codex CLI/TUI and its editor integration. Application presence does not establish feature/account access.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Not yet verified
@@ -2718,7 +2718,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://learn.chatgpt.com/docs/app'
-    [claude_desktop]='Desktop workspace with Claude Code access alongside other Claude surfaces. Distinct from the terminal harness; installed Linux packaging is managed by its original distributor.
+    [claude_desktop]='User inventory · Desktop workspace with Claude Code access alongside other Claude surfaces. Distinct from the terminal harness; installed Linux packaging is managed by its original distributor.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Not yet verified
@@ -2748,7 +2748,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://claude.com/download'
-    [copilot_vscode]='AI coding assistance inside VS Code. Target: local code CLI default profile only; other editors and profiles are separate. Account access is configured in the editor.
+    [copilot_vscode]='Catalog entry · AI coding assistance inside VS Code. Target: local code CLI default profile only; other editors and profiles are separate. Account access is configured in the editor.
 
 Catalog basis: existing-catalog. Retained catalog entry; detailed ownership and capabilities have not been independently cataloged.
 Developer: Not yet verified
@@ -2778,7 +2778,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://docs.github.com/en/copilot/how-tos/copilot-in-your-ide/set-up-copilot/install-copilot-extension'
-    [cline_vscode]='AI coding-agent extension inside VS Code. Target: local code CLI default profile only; other editors and profiles are separate. Configure provider access in the extension.
+    [cline_vscode]='Catalog entry · AI coding-agent extension inside VS Code. Target: local code CLI default profile only; other editors and profiles are separate. Configure provider access in the extension.
 
 Catalog basis: existing-catalog. Retained catalog entry; detailed ownership and capabilities have not been independently cataloged.
 Developer: Not yet verified
@@ -2808,7 +2808,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://docs.cline.bot/getting-started/installing-cline'
-    [continue_vscode]='AI coding assistance and model configuration inside VS Code. Target: local code CLI default profile only; other editors and profiles are separate.
+    [continue_vscode]='Catalog entry · AI coding assistance and model configuration inside VS Code. Target: local code CLI default profile only; other editors and profiles are separate.
 
 Catalog basis: existing-catalog. Retained catalog entry; detailed ownership and capabilities have not been independently cataloged.
 Developer: Not yet verified
@@ -2838,7 +2838,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://docs.continue.dev/ide-extensions/install'
-    [codex_vscode]='Codex integration installed into VS Code. This entry represents the editor integration, not the editor or standalone Codex application. Target: local code CLI default profile.
+    [codex_vscode]='User inventory · Codex integration installed into VS Code. This entry represents the editor integration, not the editor or standalone Codex application. Target: local code CLI default profile.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Not yet verified
@@ -2868,7 +2868,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://developers.openai.com/codex/ide/'
-    [spec_kit]='Specification and implementation planning toolkit.
+    [spec_kit]='Catalog entry · Specification and implementation planning toolkit.
 Use it for: defining requirements, plans and executable development tasks.
 
 Catalog basis: existing-catalog. Retained catalog entry; detailed ownership and capabilities have not been independently cataloged.
@@ -2896,7 +2896,7 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [openspec]='Change proposals and specification workflow.
+    [openspec]='Catalog entry · Change proposals and specification workflow.
 Use it for: recording intended behavior and tracking approved changes.
 
 Catalog basis: existing-catalog. Retained catalog entry; detailed ownership and capabilities have not been independently cataloged.
@@ -2924,7 +2924,7 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [omnigent]='Agent coordination and orchestration. Follow the Opensoft installation/integration guide to connect the intended environment. Workstation browsing does not provision factory infrastructure or worker hosts.
+    [omnigent]='Catalog entry · Agent coordination and orchestration. Follow the Opensoft installation/integration guide to connect the intended environment. Workstation browsing does not provision factory infrastructure or worker hosts.
 
 Catalog basis: existing-catalog. Retained catalog entry; detailed ownership and capabilities have not been independently cataloged.
 Developer: Not yet verified
@@ -2954,7 +2954,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://github.com/opensoft/Omnigent-Install'
-    [agenttower]='Local control tower for tmux-based AI agent workflows. Use it to coordinate agent terminals, jobs and routing. CLI: agenttower; daemon: agenttowerd.
+    [agenttower]='Catalog entry · Local control tower for tmux-based AI agent workflows. Use it to coordinate agent terminals, jobs and routing. CLI: agenttower; daemon: agenttowerd.
 
 Catalog basis: existing-catalog. Retained catalog entry; detailed ownership and capabilities have not been independently cataloged.
 Developer: Not yet verified
@@ -2984,7 +2984,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://github.com/opensoft/AgentTower'
-    [vscode]='Visual Studio Code editor.
+    [vscode]='Catalog entry · Visual Studio Code editor.
 Use it for: editing project files and using your configured development extensions.
 Editor sign-in and extensions are configured separately.
 
@@ -3013,7 +3013,7 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [cursor_ide]='Code editor with integrated AI development tools. Extensions and sign-in are managed within this editor.
+    [cursor_ide]='Catalog entry · Code editor with integrated AI development tools. Extensions and sign-in are managed within this editor.
 
 Catalog basis: existing-catalog. Retained catalog entry; detailed ownership and capabilities have not been independently cataloged.
 Developer: Not yet verified
@@ -3043,7 +3043,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://cursor.com/download'
-    [kiro_ide]='Integrated development environment for AI-assisted, specification-driven project work. Kiro CLI is a separate installation.
+    [kiro_ide]='Catalog entry · Integrated development environment for AI-assisted, specification-driven project work. Kiro CLI is a separate installation.
 
 Catalog basis: existing-catalog. Retained catalog entry; detailed ownership and capabilities have not been independently cataloged.
 Developer: Not yet verified
@@ -3073,7 +3073,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://kiro.dev/downloads/'
-    [antigravity_ide]='Integrated development environment for AI-assisted project work. The terminal CLI is a separate catalog entry.
+    [antigravity_ide]='Catalog entry · Integrated development environment for AI-assisted project work. The terminal CLI is a separate catalog entry.
 
 Catalog basis: existing-catalog. Retained catalog entry; detailed ownership and capabilities have not been independently cataloged.
 Developer: Not yet verified
@@ -3103,7 +3103,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://antigravity.google/download'
-    [comate_ide]='Baidu Comate development environment. Use it for editing and AI-assisted project work. Editor sign-in and extensions are configured separately.
+    [comate_ide]='Catalog entry · Baidu Comate development environment. Use it for editing and AI-assisted project work. Editor sign-in and extensions are configured separately.
 
 Catalog basis: existing-catalog. Retained catalog entry; detailed ownership and capabilities have not been independently cataloged.
 Developer: Not yet verified
@@ -3133,7 +3133,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://comate.baidu.com/'
-    [neovim]='Extensible terminal code editor. It hosts editing and navigation; agents/extensions configured within it are separate tools.
+    [neovim]='User inventory · Extensible terminal code editor. It hosts editing and navigation; agents/extensions configured within it are separate tools.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Not yet verified
@@ -3163,7 +3163,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://neovim.io/'
-    [abacus_editor]='Editor surface of the AbacusAI development workspace. Agent features and other surfaces are recorded through tags rather than another editor identity.
+    [abacus_editor]='User inventory · Editor surface of the AbacusAI development workspace. Agent features and other surfaces are recorded through tags rather than another editor identity.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Not yet verified
@@ -3193,7 +3193,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://github.com/abacusai/deepagent-releases'
-    [warp]='Warp terminal application.
+    [warp]='Catalog entry · Warp terminal application.
 Use it for: running local command-line development workflows.
 Configure its account and preferences in the application.
 
@@ -3222,7 +3222,7 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [wave]='Wave terminal application.
+    [wave]='Catalog entry · Wave terminal application.
 Use it for: terminal sessions and project workspaces, including configured remote connections.
 
 Catalog basis: existing-catalog. Retained catalog entry; detailed ownership and capabilities have not been independently cataloged.
@@ -3250,7 +3250,7 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [herder]='Terminal/agent workspace for running and steering agent sessions. This reference identifies herder-sh/herder; similarly named herdr products are separate.
+    [herder]='User inventory · Terminal/agent workspace for running and steering agent sessions. This reference identifies herder-sh/herder; similarly named herdr products are separate.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Not yet verified
@@ -3280,7 +3280,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://github.com/herder-sh/herder'
-    [foot]='Wayland terminal emulator. Hosts shells and terminal coding agents; it is not itself the agent runtime.
+    [foot]='User inventory · Wayland terminal emulator. Hosts shells and terminal coding agents; it is not itself the agent runtime.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Not yet verified
@@ -3310,7 +3310,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://codeberg.org/dnkl/foot'
-    [tmux]='Terminal multiplexer for persistent sessions, windows and panes. Hosts independent agent processes; process persistence is not cross-product session transfer.
+    [tmux]='User inventory · Terminal multiplexer for persistent sessions, windows and panes. Hosts independent agent processes; process persistence is not cross-product session transfer.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Not yet verified
@@ -3340,7 +3340,7 @@ Parallel execution: Not yet verified
 Manual setup: manage installation/update/removal with the original publisher or installer; this wizard does not manage this entry.
 Presence does not establish login, account access or documented feature availability.
 Setup/source: https://github.com/tmux/tmux'
-    [amnezia_vpn]='AmneziaVPN client.
+    [amnezia_vpn]='Catalog entry · AmneziaVPN client.
 Use it for: connecting to your configured VPN networks.
 Network profiles and authorization are managed separately.
 
@@ -3369,7 +3369,7 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [0dcloud_vpn]='0dcloud VPN client.
+    [0dcloud_vpn]='Catalog entry · 0dcloud VPN client.
 Use it for: access through your configured 0dcloud network.
 Connection details and authorization are configured separately.
 
@@ -3398,7 +3398,7 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [host_shell]='Configure your workstation shell environment.
+    [host_shell]='Catalog entry · Configure your workstation shell environment.
 Use it for: applying the shared shell setup.
 This replaces shell settings; it is a configuration action and cannot be uninstalled here.
 
@@ -3427,7 +3427,7 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [workspace_repo]='Configure your organization workspace repository.
+    [workspace_repo]='Catalog entry · Configure your organization workspace repository.
 Use it for: organizing the repositories used by your workstation.
 This may create a GitHub repository; it is a configuration action and cannot be uninstalled here.
 
@@ -3456,7 +3456,7 @@ Delegation model: Not yet verified
 State exchange: Not yet verified
 Parallel execution: Not yet verified
 Source: user-supplied inventory; independent publisher/setup link not yet verified.'
-    [mise]='Development tool/runtime version manager and task runner. Tool management is separate from a coding-agent harness.
+    [mise]='User inventory · Development tool/runtime version manager and task runner. Tool management is separate from a coding-agent harness.
 
 Catalog basis: user-provided. Classification and feature claims supplied by Brett; not independently verified. Presence does not verify capabilities or login.
 Developer: Not yet verified

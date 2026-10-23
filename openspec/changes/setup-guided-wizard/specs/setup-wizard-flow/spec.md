@@ -226,7 +226,7 @@ The Profiles step SHALL show the identities summary line, the rows Personal & co
 - **THEN** Profiles shows "Profile action cancelled; saved profiles kept." and queued changes are unchanged
 
 ### Requirement: Harness and Tools steps
-The Harness list SHALL be titled Harnesses and SHALL group the existing harness/specification-tool rows and manual references as specified by refinement 029-A06, with a category/item About panel. Tools SHALL show Editors & IDEs, Terminals, Networking and Workstation setup categories using the Benches category/list key pattern, then only the selected category's tools and a focused-item About panel. Category focus SHALL show category details. Component IDs, flat global indexes, installer order, selection rules and configuration-only restrictions SHALL remain unchanged. About SHALL use shared wrapping, paging, reset and same-item refresh clamping; P/G and refresh SHALL preserve the Tools category/zone/item and queue.
+The Harness list SHALL be titled Harnesses and SHALL group the existing harness/specification-tool rows and manual references as specified by refinement 029-A06, with a category/item About panel. Tools SHALL show IDEs & Editors, Terminals & Terminal Workspaces, Networking and Workstation setup categories using the Benches category/list key pattern, then only the selected category's tools and a focused-item About panel. Category focus SHALL show category details. Component IDs, flat global indexes, installer order, selection rules and configuration-only restrictions SHALL remain unchanged. About SHALL use shared wrapping, paging, reset and same-item refresh clamping; P/G and refresh SHALL preserve the Tools category/zone/item and queue.
 
 #### Scenario: Tool categories isolate lists
 - **WHEN** Networking is current
@@ -291,7 +291,7 @@ Accepted lifecycle extension: setup-workstation-lifecycle governs added service 
 
 
 ### Requirement: Categorized Harness browsing
-The Harness step SHALL browse TUI AI Tools, GUI AI Tools, IDE extensions and Workflow using the Benches category/list keys. It SHALL show a Harnesses panel with only the active category's members and category/item About. Tools SHALL group Editors & IDEs together. The catalog SHALL include the reference entries listed in amendment 029-A06. Existing managed IDs, install order and plan contracts SHALL remain stable. Reference entries SHALL be marked Manual setup, lack action checkboxes, expose setup sources, and be excluded from Review/apply. Presence evidence SHALL NOT imply authentication. P/G and refresh SHALL preserve category, zone, item and scroll state for both steps.
+The Harness step SHALL browse CLI/TUI Agent Harnesses, GUI Agent Harnesses, IDE/Editor Extensions and Workflow & Specification Tools using the Benches category/list keys, extended by setup-agent-tool-catalog. It SHALL show a Harnesses panel with only the active category's members and category/item About. Tools SHALL group IDEs & Editors together. The catalog SHALL include the original reference entries from amendment 029-A06 and the expanded inventory in setup-agent-tool-catalog. Existing managed IDs, install order and plan contracts SHALL remain stable. Reference entries SHALL be marked Manual setup, lack action checkboxes, expose setup sources, and be excluded from Review/apply. Presence evidence SHALL NOT imply authentication. P/G and refresh SHALL preserve category, zone, item and scroll state for both steps.
 
 #### Scenario: Browse a desktop harness
 - **WHEN** the user chooses GUI AI Tools and enters its list

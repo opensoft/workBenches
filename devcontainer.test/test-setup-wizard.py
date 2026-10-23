@@ -385,7 +385,11 @@ handle_input <<< $'\e[Z'; handle_input <<< $'\e[B'; handle_input <<< $'\t'
 [[ "$setup_tool_category" == terminals && "${tool_items[$current_selection]}" == warp ]] || exit 31
 handle_input <<< $'\e[B'; handle_input <<< ' '
 [[ "$current_selection" == 2 && "${component_action[wave]}" == update ]] || exit 32
-handle_input <<< $'\e[B'; [[ "$current_selection" == 2 ]] || exit 33
+handle_input <<< $'\e[B'; [[ "${tool_items[$current_selection]}" == herder ]] || exit 33
+handle_input <<< $'\e[B'; [[ "${tool_items[$current_selection]}" == foot ]] || exit 42
+handle_input <<< $'\e[B'; [[ "${tool_items[$current_selection]}" == tmux ]] || exit 43
+handle_input <<< $'\e[B'; [[ "${tool_items[$current_selection]}" == tmux ]] || exit 44
+setup_focus_tool_key wave
 handle_input <<< $'\e[A'; handle_input <<< D
 [[ "$current_selection" == 1 && "${component_action[warp]}" == uninstall ]] || exit 34
 handle_input <<< $'\e[A'
@@ -496,6 +500,75 @@ handle_input <<< $'\e[A'; setup_frame_build
 echo restored
 ''')
         self.assertEqual(output.strip(),'restored')
+
+    def test_cli_group_picker_preserves_queue_focus_and_independent_scroll_on_jumps(self):
+        output=self.shell(r'''
+init_components --loading
+for key in "${requirement_items[@]}"; do component_status[$key]=up; done
+for key in "${ai_items[@]}"; do component_status[$key]=installed; done
+component_checked[codex_cli]=true; component_action[codex_cli]=update
+setup_arrive_step 1
+handle_input <<< F; [[ "$setup_harness_zone" == group ]] || exit 30
+handle_input <<< $'\e[B'; [[ "$setup_cli_group" == model_usa ]] || exit 31
+handle_input <<< ' '; [[ "$setup_harness_zone" == harness && "${component_action[claude_cli]}" == '' ]] || exit 32
+setup_focus_harness_key hermes_agent
+component_about[hermes_agent]=''
+for ((i=0;i<60;i++)); do component_about[hermes_agent]+='Long capability and interoperability detail. '; done
+setup_ui_width=36; setup_ui_height=24; setup_frame_build
+saved_list=${setup_harness_offsets[tui:model_usa]}
+[[ "$saved_list" -gt 0 ]] || exit 33
+handle_input <<< ']'; saved_about=$setup_about_offset
+[[ "$saved_about" -gt 0 ]] || exit 34
+for jump in G P; do
+    handle_input <<< "$jump"; setup_frame_build; handle_input <<< "$jump"; setup_frame_build
+    [[ "$CURRENT_SECTION" == 1 && "$setup_cli_group" == model_usa && "$setup_harness_zone" == harness && "${ai_items[$current_selection]}" == hermes_agent ]] || exit 35
+    [[ "${setup_harness_offsets[tui:model_usa]}" == "$saved_list" && "$setup_about_offset" == "$saved_about" ]] || exit 36
+done
+status_async_ui=false
+refresh_host_tool_inventory() { :; }; setup_load_bench_metadata_sync() { :; }; refresh_bench_inventory() { :; }
+check_component_status() { echo installed; }; load_requirements() { :; }; draw_ui() { setup_frame_build; }
+handle_input <<< R
+[[ "$setup_cli_group" == model_usa && "$setup_about_offset" == "$saved_about" ]] || exit 37
+handle_input <<< F; setup_frame_build
+[[ "$setup_about_anchor" == harness-group:model_usa && "$setup_about_offset" == 0 ]] || exit 38
+handle_input <<< $'\e[B'; setup_frame_build
+[[ "$setup_cli_group" == model_china && "${ai_items[$current_selection]}" == qwen_cli ]] || exit 39
+handle_input <<< $'\t'; handle_input <<< ' '; handle_input <<< D
+[[ "${component_action[qwen_cli]}" == '' && "${component_action[codex_cli]}" == update ]] || exit 40
+handle_input <<< F; handle_input <<< $'\e[A'; handle_input <<< $'\t'
+setup_focus_harness_key hermes_agent; setup_frame_build
+[[ "${setup_harness_offsets[tui:model_usa]}" == "$saved_list" ]] || exit 41
+handle_input <<< F; handle_input <<< $'\e[Z'
+[[ "$setup_harness_zone" == category && "$setup_cli_group" == model_usa ]] || exit 42
+echo grouped
+''')
+        self.assertEqual(output.strip(),'grouped')
+
+    def test_all_new_reference_products_ignore_action_keys_even_when_present(self):
+        output=self.shell(r'''
+init_components --loading
+setup_cli_group=all
+for family in harness tool; do
+    CURRENT_SECTION=1; [[ "$family" != tool ]] || CURRENT_SECTION=2
+    declare -n cats="setup_${family}_categories" cat="setup_${family}_category" zone="setup_${family}_zone" members="setup_${family}_members"
+    zone=$family
+    for cat_id in "${cats[@]}"; do
+        cat=$cat_id
+        for key in ${members[$cat]}; do
+            [[ -n "${setup_reference_labels[$key]:-}" ]] || continue
+            setup_focus_catalog_key "$family" "$key"
+            component_status[$key]=installed
+            handle_input <<< ' '; handle_input <<< D
+            [[ "${component_checked[$key]}" != true && -z "${component_action[$key]}" ]] || exit 30
+        done
+    done
+    unset -n cats cat zone members
+done
+selection_file="$FIXTURE/empty-catalog-plan.json"; save_selection
+echo manual
+''')
+        self.assertEqual(output.strip(),'manual')
+        self.assertEqual(json.loads((self.root/'empty-catalog-plan.json').read_text())['components'],[])
 
     def test_harness_about_pages_and_resets_on_selected_harness_change(self):
         output=self.shell(r'''
@@ -620,6 +693,14 @@ setup_frame_lines=(); setup_frame_benches
 printf '%s\n' "${setup_frame_lines[@]}"
 ''')
         self.assertIn('The bench list could not be loaded. R retries.',output)
+
+
+def load_tests(loader, tests, pattern):
+    import importlib.util
+    spec=importlib.util.spec_from_file_location('tool_catalog_tests', ROOT/'devcontainer.test/test-tool-catalog.py')
+    module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+    tests.addTests(loader.loadTestsFromModule(module))
+    return tests
 
 
 if __name__ == '__main__': unittest.main()

@@ -78,7 +78,7 @@ class CatalogTests(unittest.TestCase):
         mutations = [lambda d: d['entries'].append(copy.deepcopy(d['entries'][0])),
                      lambda d: d['entries'][0].update(id='bad key'),
                      lambda d: d['entries'][0].update(label='bad\x1b[2J'),
-                     lambda d: d['entries'][0].update(about='host /home/someone/project'),
+                     lambda d: d['entries'][0].update(about='host '+'/'.join(('', 'home', 'someone', 'project'))),
                      lambda d: d['entries'][0]['detection'].update(commands=['sh -c do-something']),
                      lambda d: d['entries'][0]['verification'].update(evidence=['javascript:bad']),
                      lambda d: d['entries'][0].update(cliGroup='unknown'),
@@ -97,7 +97,7 @@ class CatalogTests(unittest.TestCase):
             snapshot = directory / 'data.sh'; snapshot.write_text(shell)
             result = subprocess.run(['bash', '-c', 'source "$1"; printf "%s" "${component_about[claude_cli]}"', 'bash', str(snapshot)], text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertTrue(result.stdout.startswith(text))
+            self.assertTrue(result.stdout.startswith('User inventory · '+text))
             self.assertFalse(sentinel.exists())
 
 

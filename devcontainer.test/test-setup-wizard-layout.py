@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Deterministic frame checks; timing runs separately on the developer host."""
 import os
+import json
 from pathlib import Path
 import re
 import subprocess
@@ -339,24 +340,15 @@ for CURRENT_SECTION in 1 2; do
     unset -n categories members_map category zone
 done
 ''')
-        harness_groups=[{'claude_cli','copilot_cli','codex_cli','antigravity_cli','opencode_cli','pi_cli'},
-                        {'opencode_desktop','qwen_desktop','kimi_desktop','zcode_desktop'},
-                        {'copilot_vscode','cline_vscode','continue_vscode'},
-                        {'spec_kit','openspec','omnigent','agenttower'}]
-        tool_groups=[{'vscode','cursor_ide','kiro_ide','antigravity_ide','comate_ide'},
-                     {'warp','wave'},{'amnezia_vpn','0dcloud_vpn'},{'host_shell','workspace_repo'}]
-        labels={'claude_cli':'Claude Code CLI','copilot_cli':'GitHub Copilot CLI','codex_cli':'Codex CLI',
-                'antigravity_cli':'Antigravity CLI','opencode_cli':'OpenCode CLI','pi_cli':'Pi Coding Agent',
-                'opencode_desktop':'OpenCode Desktop','qwen_desktop':'Qwen Code Desktop','kimi_desktop':'Kimi Code Desktop',
-                'zcode_desktop':'ZCode','copilot_vscode':'GitHub Copilot — VS Code','cline_vscode':'Cline — VS Code',
-                'continue_vscode':'Continue — VS Code','spec_kit':'spec-kit','openspec':'OpenSpec','omnigent':'Omnigent','agenttower':'AgentTower',
-                'vscode':'VS Code','cursor_ide':'Cursor','kiro_ide':'Kiro IDE','antigravity_ide':'Antigravity IDE','comate_ide':'Comate IDE',
-                'warp':'Warp Terminal','wave':'Wave Terminal','amnezia_vpn':'AmneziaVPN','0dcloud_vpn':'0dcloud VPN',
-                'host_shell':'Shell setup','workspace_repo':'Org workspace'}
+        catalog=json.loads((ROOT/'config/setup-tool-catalog.json').read_text())
+        harness_groups=[{e['id'] for e in catalog['entries'] if e['section']=='harness' and e['category']==c['id']} for c in catalog['categories']['harness']]
+        tool_groups=[{e['id'] for e in catalog['entries'] if e['section']=='tool' and e['category']==c['id']} for c in catalog['categories']['tool']]
+        labels={e['id']:e['label'] for e in catalog['entries']}
+        entries={e['id']:e for e in catalog['entries']}
         managed={'claude_cli','copilot_cli','codex_cli','antigravity_cli','opencode_cli','pi_cli',
                  'spec_kit','openspec','vscode','warp','wave','amnezia_vpn','0dcloud_vpn','host_shell','workspace_repo'}
         chunks=output.split('ITEM:')[1:]
-        self.assertEqual(len(chunks),28)
+        self.assertEqual(len(chunks),108)
         self.assertEqual({chunk.split(':',1)[0] for chunk in chunks},set(labels))
         for chunk in chunks:
             key,anchor=chunk.splitlines()[0].split(':',1)
@@ -377,9 +369,14 @@ done
             self.assertEqual(body.count('[ ]'),len(group & managed))
             if key not in managed:
                 self.assertIn('Manual setup:',plain)
-                self.assertIn('Setup:',plain)
-                self.assertIn('https://',plain)
+                if entries[key]['verification']['evidence']:
+                    self.assertIn('Setup/source:',plain)
+                    self.assertIn('https://',plain)
+                else:self.assertIn('Source: user-supplied inventory',plain)
                 self.assertIn('Presence does not establish login',plain)
+            self.assertIn('Developer relationship:',plain)
+            self.assertIn('Model policy:',plain)
+            self.assertIn('Agent interoperability:',plain)
 
     def test_long_setup_link_survives_wrap_and_paging_markers(self):
         output=self.shell(r'''
@@ -438,6 +435,49 @@ done
                 self.assertIn('Navigation:',text)
                 if zone=='harness':self.assertIn('›',text)
                 self.assertNotIn('separator',text)
+
+    def test_large_cli_list_leaves_room_for_capability_about(self):
+        output=self.shell(r'''
+init_components --loading
+for key in "${!component_description[@]}"; do component_status[$key]=installed; done
+setup_arrive_step 1; setup_harness_zone=harness; setup_focus_harness_key dsh_cli
+setup_ui_width=87; setup_ui_height=40; setup_frame_build
+[[ "$setup_about_window" -ge 5 ]] || exit 30
+[[ "${setup_harness_offsets[tui:all]}" -gt 0 ]] || exit 31
+printf '%s\n' "${setup_frame_lines[@]}"
+''')
+        self.assertIn('›',ANSI.sub('',output))
+        self.assertIn('ABOUT DEEPSEEK HARNESS',output)
+
+    def test_all_cli_ownership_groups_fit_and_keep_focus_in_both_locales(self):
+        for locale in ('C.UTF-8','C'):
+            output=self.shell(r'''
+init_components --loading
+for key in "${!component_description[@]}"; do component_status[$key]=installed; done
+for key in "${requirement_items[@]}"; do component_status[$key]=up; done
+CURRENT_SECTION=1; setup_harness_category=tui
+for setup_ui_width in 36 60 87; do
+    for setup_ui_height in 24 40 ''; do
+        for setup_cli_group in "${setup_cli_groups[@]}"; do
+            IFS=' ' read -r -a members <<< "${setup_cli_group_members[$setup_cli_group]}"
+            setup_focus_harness_key "${members[${#members[@]}-1]}"
+            for setup_harness_zone in group harness; do
+                setup_frame_build
+                printf 'GROUPCASE:%s:%s:%s:%s\n' "$setup_ui_width" "$setup_ui_height" "$setup_cli_group" "$setup_harness_zone"
+                printf '%s\n' "${setup_frame_lines[@]}"
+            done
+        done
+    done
+done
+''',locale)
+            cases=output.split('GROUPCASE:')[1:]
+            self.assertEqual(len(cases),126)
+            for case in cases:
+                marker,*lines=ANSI.sub('',case).splitlines(); width,height,group,zone=marker.split(':')
+                self.assert_bounds(lines,int(width),int(height) if height else None)
+                text='\n'.join(lines)
+                for label in ('GROUP','F Groups','ABOUT','Navigation:','›'):self.assertIn(label,text)
+                if zone=='group' and not height:self.assertIn('Ownership is separate',text)
 
     def test_all_twelve_benches_have_visible_copy_in_their_category(self):
         import json

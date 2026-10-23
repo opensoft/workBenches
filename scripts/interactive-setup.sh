@@ -360,17 +360,7 @@ init_components() {
         "openspec"
     )
     # Browse-only references are appended separately from the managed catalog.
-    ai_items+=(
-        "opencode_desktop"
-        "qwen_desktop"
-        "kimi_desktop"
-        "zcode_desktop"
-        "copilot_vscode"
-        "cline_vscode"
-        "continue_vscode"
-        "omnigent"
-        "agenttower"
-    )
+    ai_items+=("${setup_catalog_harness_refs[@]}")
 
     # Initialize AI items
     component_checked["claude_cli"]=false
@@ -407,12 +397,7 @@ init_components() {
         "host_shell"
         "workspace_repo"
     )
-    tool_items+=(
-        "cursor_ide"
-        "kiro_ide"
-        "antigravity_ide"
-        "comate_ide"
-    )
+    tool_items+=("${setup_catalog_tool_refs[@]}")
 
     # Initialize tool items
     component_checked["vscode"]=false
@@ -436,6 +421,9 @@ init_components() {
         component_checked[$item]=false
         component_action[$item]=''
         component_description[$item]="${setup_reference_labels[$item]}"
+    done
+    for item in "${!setup_catalog_labels[@]}"; do
+        component_description[$item]="${setup_catalog_labels[$item]}"
     done
     component_description[host_shell]="Shell setup"
     component_description[workspace_repo]="Org workspace"
@@ -1027,7 +1015,7 @@ prev_checked_state=""
 # A variable-returning signature avoids a subshell for every key and idle tick.
 setup_update_ui_signature() {
     local signature_key
-    setup_ui_signature="$setup_harness_zone:$setup_harness_category:$setup_tool_zone:$setup_tool_category:$CURRENT_SECTION:$current_selection:${setup_bench_zone:-category}:${setup_bench_category:-}:${setup_about_offset:-0}:${setup_review_offset:-0}:${setup_list_offset:-0}:$setup_ui_width:$setup_ui_height:$requirements_notice:$profiles_summary"
+    setup_ui_signature="$setup_cli_group:$setup_harness_zone:$setup_harness_category:$setup_tool_zone:$setup_tool_category:$CURRENT_SECTION:$current_selection:${setup_bench_zone:-category}:${setup_bench_category:-}:${setup_about_offset:-0}:${setup_review_offset:-0}:${setup_list_offset:-0}:$setup_ui_width:$setup_ui_height:$requirements_notice:$profiles_summary"
     for signature_key in "${!component_description[@]}"; do
         setup_ui_signature+=";$signature_key:${component_status[$signature_key]}:${component_checked[$signature_key]}:${component_action[$signature_key]}:${requirement_detail[$signature_key]}"
     done
@@ -1203,32 +1191,10 @@ setup_bench_zone=category
 setup_bench_category=''
 setup_harness_zone=category
 setup_harness_category=tui
-setup_harness_categories=(tui gui extensions workflow)
-declare -A setup_harness_labels=( [tui]='TUI AI Tools' [gui]='GUI AI Tools' [extensions]='IDE extensions' [workflow]=Workflow )
-declare -A setup_harness_members=(
-    [tui]='claude_cli copilot_cli codex_cli antigravity_cli opencode_cli pi_cli'
-    [gui]='opencode_desktop qwen_desktop kimi_desktop zcode_desktop'
-    [extensions]='copilot_vscode cline_vscode continue_vscode'
-    [workflow]='spec_kit openspec omnigent agenttower'
-)
-declare -A setup_harness_summaries=(
-    [tui]='AI coding assistants used interactively in a terminal.'
-    [gui]='Standalone desktop applications for AI-assisted project work.'
-    [extensions]='AI tools inside an editor. These entries target the local VS Code CLI default profile; other editors and profiles are separate.'
-    [workflow]='Specification, planning and agent orchestration tools.'
-)
+setup_cli_group=all
 declare -A setup_harness_offsets=()
 setup_tool_zone=category
 setup_tool_category=editors
-setup_tool_categories=(editors terminals networking workstation)
-declare -A setup_tool_labels=( [editors]='Editors & IDEs' [terminals]=Terminals [networking]=Networking [workstation]='Workstation setup' )
-declare -A setup_tool_members=( [editors]='vscode cursor_ide kiro_ide antigravity_ide comate_ide' [terminals]='warp wave' [networking]='amnezia_vpn 0dcloud_vpn' [workstation]='host_shell workspace_repo' )
-declare -A setup_tool_summaries=(
-    [editors]='Editors and integrated development environments for working with projects. AI extensions are listed separately in Harness.'
-    [terminals]='Terminal applications for local and remote development.'
-    [networking]='VPN clients for access to your configured networks.'
-    [workstation]='Shell settings and organization workspace configuration.'
-)
 declare -A setup_tool_offsets=()
 setup_review_offset=0
 
@@ -1243,6 +1209,7 @@ setup_remember_target() {
     printf -v "${target_prefix}_return_zone" '%s' "$setup_bench_zone"
     printf -v "${target_prefix}_return_category" '%s' "$setup_bench_category"
     printf -v "${target_prefix}_return_bench" '%s' "$target_bench"
+    printf -v "${target_prefix}_return_cli_group" '%s' "$setup_cli_group"
     printf -v "${target_prefix}_return_harness_zone" '%s' "$setup_harness_zone"
     printf -v "${target_prefix}_return_harness_category" '%s' "$setup_harness_category"
     printf -v "${target_prefix}_return_tool_zone" '%s' "$setup_tool_zone"
@@ -1262,6 +1229,7 @@ setup_restore_target() {
     target_field="${target_prefix}_return_zone"; setup_bench_zone=${!target_field}
     target_field="${target_prefix}_return_category"; setup_bench_category=${!target_field}
     target_field="${target_prefix}_return_review_offset"; setup_review_offset=${!target_field}
+    target_field="${target_prefix}_return_cli_group"; setup_cli_group=${!target_field:-all}
     target_field="${target_prefix}_return_harness_zone"; setup_harness_zone=${!target_field:-category}
     target_field="${target_prefix}_return_harness_category"; setup_harness_category=${!target_field:-tui}
     target_field="${target_prefix}_return_tool_zone"; setup_tool_zone=${!target_field:-category}
@@ -1423,6 +1391,44 @@ setup_frame_categories() {
 
 # Both catalogs use the same category/list navigation; indexes remain in the
 # original flat arrays used by selection serialization and installers.
+setup_catalog_members_v() {
+    local members_value
+    local -n members_map="setup_${2}_members"
+    members_value="${members_map[$3]}"
+    if [[ "$2" == harness && "$3" == tui ]]; then members_value="${setup_cli_group_members[$setup_cli_group]}"; fi
+    printf -v "$1" '%s' "$members_value"
+}
+
+setup_cli_group_key() {
+    local cli_key="$1" cli_index=0 cli_members
+    local -a cli_group_items=()
+    [[ "$CURRENT_SECTION" == 1 && "$setup_harness_category" == tui ]] || return 1
+    if [[ "$cli_key" == f || "$cli_key" == F ]]; then
+        if [[ "$setup_harness_zone" == group ]]; then setup_harness_zone=harness
+        else setup_harness_zone=group; fi
+        setup_about_offset=0
+        return 0
+    fi
+    [[ "$setup_harness_zone" == group ]] || return 1
+    for cli_index in "${!setup_cli_groups[@]}"; do [[ "${setup_cli_groups[cli_index]}" != "$setup_cli_group" ]] || break; done
+    case "$cli_key" in
+        up) ((cli_index <= 0)) || ((cli_index--)) ;;
+        down) ((cli_index+1 >= ${#setup_cli_groups[@]})) || ((cli_index++)) ;;
+        tab|' ') setup_harness_zone=harness ;;
+        backtab) setup_harness_zone=category ;;
+        d|D) return 0 ;;
+        *) return 1 ;;
+    esac
+    if [[ "$setup_cli_group" != "${setup_cli_groups[cli_index]}" ]]; then
+        setup_cli_group=${setup_cli_groups[cli_index]}
+        setup_catalog_members_v cli_members harness tui
+        IFS=' ' read -r -a cli_group_items <<< "$cli_members"
+        setup_focus_harness_key "${cli_group_items[0]}"
+    fi
+    setup_about_offset=0
+    return 0
+}
+
 setup_focus_catalog_key() {
     local catalog_family="$1" catalog_key="$2" catalog_index
     local catalog_array=tool_items
@@ -1438,7 +1444,8 @@ setup_focus_tool_key() { setup_focus_catalog_key tool "$1"; }
 setup_focus_harness_key() { setup_focus_catalog_key harness "$1"; }
 
 setup_catalog_key() {
-    local catalog_family="$1" catalog_key="$2" catalog_category_index=0 catalog_member_index=0 catalog_array=tool_items
+    local catalog_family="$1" catalog_key="$2" catalog_category_index=0 catalog_member_index=0 catalog_array=tool_items catalog_member_text
+    if [[ "$catalog_family" == harness ]] && setup_cli_group_key "$catalog_key"; then return 0; fi
     local -n catalog_categories="setup_${catalog_family}_categories" catalog_members="setup_${catalog_family}_members"
     local -n catalog_category="setup_${catalog_family}_category" catalog_zone="setup_${catalog_family}_zone"
     [[ "$catalog_family" != harness ]] || catalog_array=ai_items
@@ -1447,7 +1454,8 @@ setup_catalog_key() {
     for catalog_category_index in "${!catalog_categories[@]}"; do
         [[ "${catalog_categories[catalog_category_index]}" != "$catalog_category" ]] || break
     done
-    IFS=' ' read -r -a catalog_current_members <<< "${catalog_members[$catalog_category]}"
+    setup_catalog_members_v catalog_member_text "$catalog_family" "$catalog_category"
+    IFS=' ' read -r -a catalog_current_members <<< "$catalog_member_text"
     if [[ "$catalog_zone" == category ]]; then
         case "$catalog_key" in
             up) ((catalog_category_index <= 0)) || ((catalog_category_index--)) ;;
@@ -1457,7 +1465,8 @@ setup_catalog_key() {
             *) return 1 ;;
         esac
         catalog_category=${catalog_categories[catalog_category_index]}
-        IFS=' ' read -r -a catalog_current_members <<< "${catalog_members[$catalog_category]}"
+        setup_catalog_members_v catalog_member_text "$catalog_family" "$catalog_category"
+        IFS=' ' read -r -a catalog_current_members <<< "$catalog_member_text"
         setup_focus_catalog_key "$catalog_family" "${catalog_current_members[0]}"
     else
         for catalog_member_index in "${!catalog_current_members[@]}"; do
@@ -1526,7 +1535,7 @@ setup_arrive_step() {
         setup_bench_zone=category
         setup_bench_category="${setup_bench_categories_focusable[0]:-}"
     fi
-    if [[ "$CURRENT_SECTION" == 1 ]]; then setup_harness_zone=category; setup_harness_category=tui; fi
+    if [[ "$CURRENT_SECTION" == 1 ]]; then setup_harness_zone=category; setup_harness_category=tui; setup_cli_group=all; fi
     if [[ "$CURRENT_SECTION" == 2 ]]; then setup_tool_zone=category; setup_tool_category=editors; fi
     [[ "$CURRENT_SECTION" != 5 ]] || setup_review_offset=0
 }
@@ -1624,6 +1633,8 @@ setup_frame_footer_prepare() {
     if [[ -n "$footer_key" ]]; then footer_name="${component_description[$footer_key]}"; fi
     footer_context=$footer_name
     if [[ "$CURRENT_SECTION" == 5 ]]; then footer_context='Review · Nothing applied yet'
+    elif [[ "$CURRENT_SECTION" == 1 && "$setup_harness_zone" == group ]]; then
+        footer_context="GROUP · ${setup_cli_group_labels[$setup_cli_group]}"
     elif [[ "$CURRENT_SECTION" == 1 && "$setup_harness_zone" == category ]]; then
         setup_catalog_group_summary_v footer_context harness "$setup_harness_category"
     elif [[ "$CURRENT_SECTION" == 2 && "$setup_tool_zone" == category ]]; then
@@ -1687,6 +1698,23 @@ setup_frame_footer_prepare() {
     if [[ -n "$footer_key" && -n "${setup_reference_labels[$footer_key]:-}" ]]; then
         if ((setup_ui_width < 60)); then footer_hints=('Navigation: Tab Category  [/] About' '←→ Steps  Enter Review  Q Quit')
         else footer_hints=('Navigation: ↑↓ Move  Tab Category  PgUp/PgDn About' 'Manual setup: see About  ←→ Steps  Enter Review  Q Quit'); fi
+    fi
+    if [[ "$CURRENT_SECTION" == 1 && "$setup_harness_category" == tui ]]; then
+        if ((setup_ui_width < 60)); then
+            case "$setup_harness_zone" in
+                category) footer_hints=('Navigation: Tab List  F Groups' '←→ Steps  Enter Review  Q Quit') ;;
+                group) footer_hints=('Navigation: ↑↓ Group  Tab List' '←→ Steps  Enter Review  Q Quit') ;;
+                *) footer_hints=('Navigation: Space/D  F Groups' '←→ Steps  Enter Review  Q Quit')
+                   [[ -z "${setup_reference_labels[$footer_key]:-}" ]] || footer_hints[0]='Navigation: F Groups  [/] About' ;;
+            esac
+        else
+            case "$setup_harness_zone" in
+                category) footer_hints[0]='Navigation: ↑↓ Category  Tab List  F Groups  PgUp/PgDn About' ;;
+                group) footer_hints[0]='Navigation: ↑↓ Group  Tab List  Shift+Tab Category  F Back' ;;
+                *) footer_hints[0]='Navigation: ↑↓ Move  Tab Category  Space/D Select  F Groups  [/] About'
+                   [[ -z "${setup_reference_labels[$footer_key]:-}" ]] || footer_hints[0]='Navigation: ↑↓ Move  Tab Category  F Groups  [/] About' ;;
+            esac
+        fi
     fi
     for footer_hint in "${footer_hints[@]}"; do
         setup_ui_wrap "$footer_hint" "$setup_ui_width"
@@ -1753,11 +1781,18 @@ setup_frame_component_row() {
         component_right="$component_state$component_right"
     fi
     if [[ -n "${setup_reference_labels[$component_key]:-}" ]]; then
-        component_box=' · '
+        component_box='·'
         component_state='Manual setup'
         if [[ "${component_status[$component_key]}" == installed ]]; then component_state='Installed · manual'
         elif [[ "${component_status[$component_key]}" == 'needs check' ]]; then component_state='Check manually'
         elif [[ "${component_status[$component_key]}" == loading ]]; then component_state='Loading…'; fi
+        if ((setup_ui_width < 50)); then
+            case "${component_status[$component_key]}" in
+                'needs check') component_state=Check ;;
+                loading) component_state='…' ;;
+                *) component_state=Manual ;;
+            esac
+        fi
         component_right=$component_state
     fi
     setup_frame_row "$component_marker $component_box $component_icon ${component_description[$component_key]}" "$component_right" "$component_color"
@@ -1771,54 +1806,8 @@ declare -A workstation_about=(
 )
 
 
-# Reference catalog: browsing and presence only; not installable selection keys.
-declare -A setup_reference_labels=(
-    [opencode_desktop]='OpenCode Desktop'
-    [qwen_desktop]='Qwen Code Desktop'
-    [kimi_desktop]='Kimi Code Desktop'
-    [zcode_desktop]='ZCode'
-    [copilot_vscode]='GitHub Copilot — VS Code'
-    [cline_vscode]='Cline — VS Code'
-    [continue_vscode]='Continue — VS Code'
-    [omnigent]='Omnigent'
-    [agenttower]='AgentTower'
-    [cursor_ide]='Cursor'
-    [kiro_ide]='Kiro IDE'
-    [antigravity_ide]='Antigravity IDE'
-    [comate_ide]='Comate IDE'
-)
-
-declare -A component_about=(
-    [opencode_desktop]=$'Desktop AI coding workspace. Use it for project conversations and code changes. The OpenCode CLI is a separate installation.\nManual setup: install/update/remove using the linked guide; this wizard does not manage this entry.\nPresence does not establish login or account access.\nSetup: https://opencode.ai/download'
-    [qwen_desktop]=$'Graphical Qwen Code project workspace. Use it for coding-agent sessions outside the terminal.\nManual setup: install/update/remove using the linked guide; this wizard does not manage this entry.\nPresence does not establish login or account access.\nSetup: https://github.com/QwenLM/qwen-code/releases'
-    [kimi_desktop]=$'Graphical Kimi Code project workspace. Use it for interactive coding-agent sessions.\nManual setup: install/update/remove using the linked guide; this wizard does not manage this entry.\nPresence does not establish login or account access.\nSetup: https://www.kimi.com/en/help/kimi-code/desktop-getting-started'
-    [zcode_desktop]=$'Desktop development workspace powered by ZCode Agent.\nManual setup: install/update/remove using the linked guide; this wizard does not manage this entry.\nPresence does not establish login or account access.\nSetup: https://zcode.z.ai/en/docs/install'
-    [copilot_vscode]=$'AI coding assistance inside VS Code. Target: local code CLI default profile only; other editors and profiles are separate. Account access is configured in the editor.\nManual setup: install/update/remove using the linked guide; this wizard does not manage this entry.\nPresence does not establish login or account access.\nSetup: https://docs.github.com/en/copilot/how-tos/copilot-in-your-ide/set-up-copilot/install-copilot-extension'
-    [cline_vscode]=$'AI coding-agent extension inside VS Code. Target: local code CLI default profile only; other editors and profiles are separate. Configure provider access in the extension.\nManual setup: install/update/remove using the linked guide; this wizard does not manage this entry.\nPresence does not establish login or account access.\nSetup: https://docs.cline.bot/getting-started/installing-cline'
-    [continue_vscode]=$'AI coding assistance and model configuration inside VS Code. Target: local code CLI default profile only; other editors and profiles are separate.\nManual setup: install/update/remove using the linked guide; this wizard does not manage this entry.\nPresence does not establish login or account access.\nSetup: https://docs.continue.dev/ide-extensions/install'
-    [omnigent]=$'Agent coordination and orchestration. Follow the Opensoft installation/integration guide to connect the intended environment. Workstation browsing does not provision factory infrastructure or worker hosts.\nManual setup: install/update/remove using the linked guide; this wizard does not manage this entry.\nPresence does not establish login or account access.\nSetup: https://github.com/opensoft/Omnigent-Install'
-    [agenttower]=$'Local control tower for tmux-based AI agent workflows. Use it to coordinate agent terminals, jobs and routing. CLI: agenttower; daemon: agenttowerd.\nManual setup: install/update/remove using the linked guide; this wizard does not manage this entry.\nPresence does not establish login or account access.\nSetup: https://github.com/opensoft/AgentTower'
-    [cursor_ide]=$'Code editor with integrated AI development tools. Extensions and sign-in are managed within this editor.\nManual setup: install/update/remove using the linked guide; this wizard does not manage this entry.\nPresence does not establish login or account access.\nSetup: https://cursor.com/download'
-    [kiro_ide]=$'Integrated development environment for AI-assisted, specification-driven project work. Kiro CLI is a separate installation.\nManual setup: install/update/remove using the linked guide; this wizard does not manage this entry.\nPresence does not establish login or account access.\nSetup: https://kiro.dev/downloads/'
-    [antigravity_ide]=$'Integrated development environment for AI-assisted project work. The terminal CLI is a separate catalog entry.\nManual setup: install/update/remove using the linked guide; this wizard does not manage this entry.\nPresence does not establish login or account access.\nSetup: https://antigravity.google/download'
-    [comate_ide]=$'Baidu Comate development environment. Use it for editing and AI-assisted project work. Editor sign-in and extensions are configured separately.\nManual setup: install/update/remove using the linked guide; this wizard does not manage this entry.\nPresence does not establish login or account access.\nSetup: https://comate.baidu.com/'
-
-    [claude_cli]=$'Claude coding assistant in your terminal.\nUse it for: working on project changes and understanding code.\nManage sign-in and account profiles from Profiles.'
-    [copilot_cli]=$'GitHub Copilot coding assistant in your terminal.\nUse it for: assisted development tasks in your projects.\nManage sign-in and account access from Profiles.'
-    [codex_cli]=$'Codex coding assistant in your terminal.\nUse it for: exploring code, making project changes and running development tasks.\nManage sign-in and account profiles from Profiles.'
-    [antigravity_cli]=$'Antigravity command-line coding workflow.\nUse it for: terminal access to the configured development assistant.\nAccount setup is separate from installing the CLI.'
-    [opencode_cli]=$'OpenCode coding assistant in your terminal.\nUse it for: working on code with your configured provider.\nManage provider credentials from Profiles.'
-    [pi_cli]=$'Pi coding agent in your terminal.\nUse it for: interactive development work with your configured provider.\nManage sign-in and credentials from Profiles.'
-    [spec_kit]=$'Specification and implementation planning toolkit.\nUse it for: defining requirements, plans and executable development tasks.'
-    [openspec]=$'Change proposals and specification workflow.\nUse it for: recording intended behavior and tracking approved changes.'
-    [vscode]=$'Visual Studio Code editor.\nUse it for: editing project files and using your configured development extensions.\nEditor sign-in and extensions are configured separately.'
-    [warp]=$'Warp terminal application.\nUse it for: running local command-line development workflows.\nConfigure its account and preferences in the application.'
-    [wave]=$'Wave terminal application.\nUse it for: terminal sessions and project workspaces, including configured remote connections.'
-    [amnezia_vpn]=$'AmneziaVPN client.\nUse it for: connecting to your configured VPN networks.\nNetwork profiles and authorization are managed separately.'
-    [0dcloud_vpn]=$'0dcloud VPN client.\nUse it for: access through your configured 0dcloud network.\nConnection details and authorization are configured separately.'
-    [host_shell]=$'Configure your workstation shell environment.\nUse it for: applying the shared shell setup.\nThis replaces shell settings; it is a configuration action and cannot be uninstalled here.'
-    [workspace_repo]=$'Configure your organization workspace repository.\nUse it for: organizing the repositories used by your workstation.\nThis may create a GitHub repository; it is a configuration action and cannot be uninstalled here.'
-)
+# Generated static metadata: startup and rendering need no JSON/tool probes.
+source "$SCRIPT_DIR/lib/setup-tool-catalog.generated.sh"
 
 declare -A profile_about=(
     [personal_profiles]='Personal identity, GitHub and company accounts. Company, GitHub and AI access are authorized separately.'
@@ -1953,36 +1942,57 @@ setup_frame_benches() {
 }
 
 setup_frame_components() {
-    local component_line component_index component_key component_focus component_budget=0 component_focus_index=0 component_offset component_title component_about_title component_about_text component_anchor component_window=8 component_family=tool component_array=tool_items
+    local component_line component_index component_key component_focus component_budget=0 component_focus_index=0 component_offset component_title component_about_title component_about_text component_anchor component_window=8 component_family=tool component_array=tool_items component_member_text component_offset_key
     [[ "$CURRENT_SECTION" != 1 ]] || { component_family=harness; component_array=ai_items; }
     local -n component_categories="setup_${component_family}_members" component_category="setup_${component_family}_category" component_zone="setup_${component_family}_zone"
     local -n component_labels="setup_${component_family}_labels" component_offsets="setup_${component_family}_offsets" component_summaries="setup_${component_family}_summaries" component_flat="$component_array"
     local -a component_items=()
-    IFS=' ' read -r -a component_items <<< "${component_categories[$component_category]}"
-    component_title="${component_labels[$component_category]}"; component_offset=${component_offsets[$component_category]:-0}
+    setup_catalog_members_v component_member_text "$component_family" "$component_category"
+    IFS=' ' read -r -a component_items <<< "$component_member_text"
+    component_offset_key=$component_category
+    if [[ "$component_family" == harness && "$component_category" == tui ]]; then component_offset_key="tui:$setup_cli_group"; fi
+    component_title="${component_labels[$component_category]}"; component_offset=${component_offsets[$component_offset_key]:-0}
     [[ "$component_family" != harness ]] || component_title="Harnesses · $component_title"
     for component_index in "${!component_items[@]}"; do
         [[ "${component_items[component_index]}" != "${component_flat[$current_selection]}" ]] || component_focus_index=$component_index
     done
     [[ "$setup_ui_layout" != roomy ]] || setup_frame_append ''
+    if [[ "$component_family" == harness && "$component_category" == tui ]]; then
+        if ((setup_ui_width < 60)); then
+            setup_ui_pair_v component_line GROUP 'F Groups' "$setup_ui_width"
+            setup_frame_append "$component_line"
+            component_line="  ${setup_cli_group_labels[$setup_cli_group]}"
+            [[ "$component_zone" != group ]] || component_line="› ${setup_cli_group_labels[$setup_cli_group]}"
+            setup_ui_cut_v component_line "$component_line" "$setup_ui_width"
+        else
+            component_line="GROUP · ${setup_cli_group_labels[$setup_cli_group]}"
+            [[ "$component_zone" != group ]] || component_line="› $component_line"
+            setup_ui_pair_v component_line "$component_line" 'F Groups' "$setup_ui_width"
+        fi
+        setup_frame_append "$component_line"
+    fi
     setup_panel_top_v component_line "$component_title" ''; setup_frame_append "$component_line"
     if [[ -n "$setup_ui_height" ]]; then
-        component_budget=$((setup_ui_height - ${#setup_frame_lines[@]} - setup_footer_height - 5))
+        component_budget=$((setup_ui_height - ${#setup_frame_lines[@]} - setup_footer_height - 9))
         [[ "$setup_ui_layout" != roomy ]] || ((component_budget--))
         ((component_budget >= 3)) || component_budget=3
     fi
     setup_ui_list_window "${#component_items[@]}" "$component_focus_index" "$component_budget" component_offset
-    component_offsets[$component_category]=$component_offset
+    component_offsets[$component_offset_key]=$component_offset
     if ((setup_window_above > 0)); then setup_frame_row "▲ $setup_window_above more"; fi
     for ((component_index=setup_window_start; component_index<setup_window_start+setup_window_count; component_index++)); do
         component_key="${component_items[component_index]}"; component_focus=false
-        if ((component_index == component_focus_index)) && [[ "$component_zone" != category ]]; then component_focus=true; fi
+        if ((component_index == component_focus_index)) && [[ "$component_zone" == "$component_family" ]]; then component_focus=true; fi
         setup_frame_component_row "$component_key" "$component_focus"
     done
     if ((setup_window_below > 0)); then setup_frame_row "▼ $setup_window_below more"; fi
     setup_panel_bottom_v component_line; setup_frame_append "$component_line"
     [[ "$setup_ui_layout" != roomy ]] || setup_frame_append ''
-    if [[ "$component_zone" == category ]]; then
+    if [[ "$component_zone" == group ]]; then
+        component_anchor="harness-group:$setup_cli_group"
+        component_about_title="ABOUT ${setup_cli_group_labels[$setup_cli_group]^^}"
+        component_about_text="${setup_cli_group_summaries[$setup_cli_group]}"$'\nOwnership is separate from model flexibility. Product claims carry their own verification notes; unknown does not mean unsupported.'
+    elif [[ "$component_zone" == category ]]; then
         component_anchor="$component_family-category:$component_category"; component_about_title="ABOUT ${component_labels[$component_category]^^}"
         component_about_text="${component_summaries[$component_category]}"$'\nIncludes: '
         component_line=''
@@ -2207,6 +2217,7 @@ handle_input() {
 
     setup_input_key="$key"
     case "$key" in
+        f|F) setup_input_key=group; setup_cli_group_key "$key" || :; return 0 ;;
         $'\t') setup_input_key=tab; [[ "$CURRENT_SECTION" != 0 ]] || setup_benches_key tab; [[ "$CURRENT_SECTION" != 2 ]] || setup_tools_key tab; [[ "$CURRENT_SECTION" != 1 ]] || setup_harnesses_key tab; return 0 ;;
         '[') setup_input_key=pageup; if [[ "$CURRENT_SECTION" != 5 ]]; then setup_about_scroll -1; fi; return 0 ;;
         ']') setup_input_key=pagedown; if [[ "$CURRENT_SECTION" != 5 ]]; then setup_about_scroll 1; fi; return 0 ;;

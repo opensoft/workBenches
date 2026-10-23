@@ -451,3 +451,77 @@ Verification on Raven / native Linux, using fixtures only:
 No installers, removals, Docker builds, account actions or host configuration
 changes were executed. Human bench-copy approval, remote CI, real-host install
 QA, PR/merge and archive gates remain pending.
+
+
+## Expanded product catalog T039I / T039J — 2026-10-23
+
+Authority: Brett's two supplied taxonomy/inventory messages. Governing extension:
+`openspec/changes/setup-agent-tool-catalog/`. T039I (`2f3e823`) defines canonical
+metadata and deterministic static snapshots; this T039J commit integrates the
+browser, inventory and documentation. Both retain the original managed keys,
+flat global indexes, installer order and credential/selection contracts.
+
+The catalog has 108 distinct products: 77 terminal harnesses, 6 GUI harnesses,
+4 editor integrations, 4 workflow tools, 7 editors/IDEs, 5 terminal workspaces,
+2 networking entries and 3 workstation setup entries. Fifteen existing managed
+entries retain their actions; 93 references are manual-only. Terminal groups:
+USA model-maker 13, China model-maker 9, Other model-maker 1, open/BYOK combo 22,
+commercial/managed combo 10, specialized/research/minimal 22. Ownership, region
+and model policy are separate fields. China-associated claims and regional/
+legacy SKU identities remain qualified; Kimi Code/legacy Kimi, Qoder CN/
+international, Codex GUI/CLI/editor extension and terminal hosts/agents are not
+silently merged. dsh-TUI is described as an optional frontend mode/plugin of
+DeepSeek Harness rather than another agent-runtime identity.
+
+About includes role tags, execution modes/location, model policy/support,
+status/lineage, other surfaces, autonomy/permissions and separate interoperability
+fields for invocation mechanism, external invocation, delegation, state exchange
+and parallel execution. User-provided claims are visibly identified. Unknown is
+not unavailable. Primary capability evidence links are separate from presence,
+account access and installed-version behavior. No generic interoperability
+category, agent runs or automatic installation integrations were added.
+
+F focuses the optional CLI group picker; Up/Down chooses the group, Tab/Space
+enters its filtered list and Shift+Tab returns to categories. Existing Tab-to-list
+sequences remain valid. Groups keep independent list windows. P/G and refresh
+preserve group/category/zone/item/list/About state and all queued actions. Narrow
+frames keep group labels readable on a separate row and compact reference status;
+large lists reserve at least five About lines in the 87×40 fixture.
+
+Verification on Raven / native Linux:
+
+- T039I exact verify: PASS; canonical schema and coverage, generated Bash/Python
+  synchronization, literal shell-quoting injection fixture and strict OpenSpec.
+- T039J exact verify: PASS, final run 44.68 seconds. Catalog 5 tests, wizard 38
+  (including the catalog tests loaded in the existing CI suite), layout 23,
+  components 31, guided flow 43, async 6; native/WSL acceptance compilation,
+  render timing and both strict governed OpenSpec validations.
+- All 32 quickstart suites: PASS, 80.35 seconds. The final malformed-package
+  shape guard and its negative fixture also passed the full exact T039J verify
+  afterward. Workstation-lifecycle OpenSpec validation remains PASS.
+- Retained the existing complete locale/size matrix and no-fork guard. Added
+  252 CLI-group frames (7 groups × 2 zones × 3 widths × 3 heights × 2 locales),
+  plus the earlier 144 category-zone frames. Every one of the 108 entries has
+  About, correct category membership and qualification; all 93 references reject
+  action keys and both plan allowlists reject their keys.
+- Package detection distinguishes Kimi Code from legacy Kimi and ambiguous
+  Qoder SKUs. The real mise/pnpm .bin wrapper required the matching package,
+  declared export and contained executable payload; positive/missing/mismatched/
+  malformed metadata cases pass. Read-only native inspection now detects the
+  installed Kimi Code without inferring a legacy installation. Desktop Exec
+  metadata is read as data and never executed; unrecognized wrappers are ignored.
+- Full Benches timing median 4.400 ms, p90 5.720 ms, max 5.856 ms. Step medians:
+  Workstation 2.718, Benches 3.046, Harness 7.365, Tools 4.146,
+  Profiles 2.455, Review 4.224 ms. No rendering subprocess exemptions.
+- Refreshed the selection-only preview on workspace 14 and visually inspected
+  the 77-entry list, USA ownership filter, Codex CLI/TUI About, sources/statuses,
+  independent group/list focus and the expanded About space. Native presence
+  reported 12 terminal products; this does not establish authentication.
+- Scope, whitespace, modes and LF checks pass. Two isolated shell fixtures now
+  copy the generated runtime dependencies; all original behavioral assertions
+  remain. Release base remains `ccc9eac`.
+
+No provider API calls, agent launches, installers, removals, Docker builds,
+account actions or host configuration changes were executed. Human bench-copy
+approval, remote CI, real-host installation QA, PR/merge and archive gates remain
+pending. Catalog claims without primary evidence remain user-provided/unverified.
