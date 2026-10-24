@@ -26,3 +26,14 @@ The setup manifest now includes company-connection and the Workstation Setup
 workflow (`credential-recovery.yml`) watches its runtime/test paths. Release
 metadata is development-only. Real Tools/native integration and PR review/CI
 are recorded below when complete; fixture success is not live-provider sign-in.
+
+Declared `tools-runtime` Compose service passed end to end with isolated test
+image tags: native company browser/clipboard RPC, native GitHub verification,
+Docker/host adapters, Tools restart, real initial TUI paint, all 11 Vault/Profile
+button-flow stages with a disposable bench queue, and Vault health/restart/narrow
+mounts. No running user bench or production credentials were used or changed.
+
+The feature is based on the final 1.6.1 candidate. Integration must preserve the
+separate stable-release sequence; this development version must not replace main
+before the requested 1.6.0/1.6.1 publication is resolved. PR CI and exact-head
+review remain T004's final acceptance steps.
