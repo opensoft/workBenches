@@ -1,24 +1,25 @@
-# workBenches 1.6.0
+# workBenches 1.6.1
 
-This release adds multi-identity Profiles management and opt-in company
-credential workflows, including broker-controlled discovery, publication,
-recovery, workstation synchronization and CPC maintenance.
+This patch retains the tested v1.6 setup and fixes private GitHub bench cloning
+through the workstation's GitHub CLI credentials when Git runs inside Tools.
+Existing SSH access and Git credential helpers remain in place. A retry also
+finishes a previously interrupted bench submodule initialization.
 
-It also includes interrupted-write recovery, retryable maintenance outages,
-collision-safe identity profiles, managed Claude lane startup synchronization,
-the complete pinned openRepoTools payload, and Arch-family shell installation
-support. All 12 bench source pins are retained. The v1.7 guided wizard remains
-on its separate development branch.
+All 12 bench source pins and the v1.6.0 identity/company workflows are retained.
+The v1.7 guided wizard remains on its separate development branch. Company
+identity-provider registration guidance is a v1.6.2 follow-up; this patch keeps
+the existing administrator-enrollment and issuer/client-ID sign-in behavior.
 
-Brett accepted the merged setup on Raven at `5407ee9` on 2026-10-23. Source,
-setup, launcher and estate CI passed on that commit; broker/client fixtures
-passed 46 tests without skips. These results do not certify the full native
-and live authentication/provider release cases. Final publication still needs
-the exact version-stamped commit's release evidence under the repository gate.
+Brett accepted the v1.6.1 candidate on Raven on 2026-10-24 and requested release
+as tested. The private-auth fix at `e07ac4c` has passing Workstation Setup,
+source-freeze and CodeQL CI and an exact-head Codex review without findings.
+These results and manual acceptance do not certify unexecuted full native/live
+provider gates. Publication evidence and any explicit owner-authorized release
+exception must be recorded honestly; no missing live result is marked passed.
 
 Company credential sharing requires explicit configuration and approved
 provider modes. Unsupported modes remain disabled; existing credentials are
 not automatically migrated or published.
 
-See [the full release notes](docs/release-1.6.0.md) and
+See [the patch release notes](docs/release-1.6.1.md) and
 [the release validation procedure](docs/release-automation.md).
