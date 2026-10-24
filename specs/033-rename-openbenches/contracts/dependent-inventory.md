@@ -18,7 +18,7 @@ Status values: `pending`, `in-progress`, `ready`, `landed`, `verified`, `blocked
 | frappeBench | Checkout repository field only; preserve checker commit | Immediate slug sweep | pending |
 | goBench | Checkout repository field only; preserve checker commit | Immediate slug sweep | pending |
 | phpBench | Checkout repository field only; preserve checker commit | Immediate slug sweep | pending |
-| Opensoft-Tenant / AI-Credentials | Owner-led provider/path compatibility review without exposing inventories or payloads | Before fresh roots | in-progress — review complete; legacy operation safe; path patches required before fresh roots; no secret-material review needed for shell/docs-only changes |
+| Opensoft-Tenant / AI-Credentials | Owner-led provider/path compatibility review without exposing inventories or payloads | Before fresh roots | ready — brettheap/AI-Credentials#3 (23 tests) and opensoft/Opensoft-Tenant#240 (13 tests); single-root paths and overrides verified with synthetic fixtures only |
 | openWorkBenchesCli | Update current extraction-source links after cutover; do not consolidate the family | Immediate slug sweep | pending |
 | GitHub repository/settings | Controlled admin rename; description/topics/ruleset display; verify org rules and environments | Gated cutover | in-progress — canonical cutover branch `218dee2` prepared and pushed without a PR; admin rename remains gated |
 | Release/QA runners | Dual labels, environment aliases, config fallback; pause only at approved cutover window | Runtime compatibility | pending |
