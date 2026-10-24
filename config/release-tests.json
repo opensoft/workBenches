@@ -63,6 +63,13 @@
           ]
         },
         {
+          "id": "company-connection",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-company-connection.py"
+          ]
+        },
+        {
           "id": "docker-prerequisite",
           "argv": [
             "python3",
