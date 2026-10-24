@@ -197,6 +197,12 @@ import sys
 sys.path.insert(0, sys.argv[1] + '/scripts')
 from profile_github import GitHub, DEVICE_URL
 import workbenches_host as host
+from company_connection import native_action
+assert native_action('browser', 'https://identity.example/admin/', host)
+assert native_action('copy', 'Public client; device authorization enabled', host)
+import pathlib
+assert (pathlib.Path.home() / 'github-browser-url').read_text() == 'https://identity.example/admin'
+assert (pathlib.Path.home() / 'github-device-code').read_text() == 'Public client; device authorization enabled'
 client = GitHub(host)
 assert client.discover()[0]['login'] == 'fixture-user'
 connection = {'id': 101, 'login': 'fixture-user', 'authSource': 'native'}

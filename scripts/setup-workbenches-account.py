@@ -216,19 +216,18 @@ def main():
         return 0
     config = configuration()
     if config is None:
-        print('Optional workBenches account: your organization must provide its Keycloak realm URL and public client ID.')
-        issuer = prompt('Realm HTTPS URL (Enter skips, Q cancels): ')
-        if not issuer:
+        from company_connection import connect
+        try:
+            import workbenches_host as native
+        except ImportError:
+            if os.environ.get('WORKBENCHES_HOST_RPC'):
+                raise
+            native = None
+        config = connect(CONFIG.parent, request, write_private,
+                         company=os.environ.get('WORKBENCHES_ACCOUNT_COMPANY', 'Company'), host=native)
+        if config is None:
             print('Account setup skipped. Bench installation does not require an account.')
             return 0
-        client = prompt('Public client ID (Enter skips, Q cancels): ')
-        if not client:
-            print('Account setup skipped.')
-            return 0
-        config = {'issuer': url(issuer.rstrip('/')), 'clientId': client}
-        if urllib.parse.urlsplit(config['issuer']).query:
-            raise ValueError('Realm URL must not contain a query.')
-        write_private(CONFIG, config)
     return login(config)
 
 

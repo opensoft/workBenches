@@ -41,7 +41,8 @@ def connect_github(profile, data, identity=None):
 
 
 def account(profile, action):
-    env = dict(os.environ, WORKBENCHES_ACCOUNT_ROOT=str(profiles.account_root(profile)))
+    env = dict(os.environ, WORKBENCHES_ACCOUNT_ROOT=str(profiles.account_root(profile)),
+               WORKBENCHES_ACCOUNT_COMPANY=profile['name'])
     # Global legacy deployment overrides must not redirect a different company.
     env.pop('WORKBENCHES_ACCOUNT_ISSUER', None)
     env.pop('WORKBENCHES_ACCOUNT_CLIENT_ID', None)
@@ -57,21 +58,8 @@ def enrollment(profile):
     source = ask('Administrator enrollment HTTPS URL or local JSON file')
     if not source:
         return
-    class NoRedirect(urllib.request.HTTPRedirectHandler):
-        def redirect_request(self, *args):
-            raise ValueError('Enrollment redirects are refused; use the final administrator-provided URL.')
-    if source.startswith('https://'):
-        parsed = urllib.parse.urlsplit(source)
-        if not parsed.hostname or parsed.username or parsed.password or parsed.fragment:
-            raise ValueError('Use an HTTPS enrollment URL without embedded credentials or a fragment.')
-        with urllib.request.build_opener(NoRedirect).open(source, timeout=15) as response:
-            raw = response.read(65537)
-    else:
-        with Path(source).expanduser().open('rb') as stream:
-            raw = stream.read(65537)
-    if len(raw) > 65536:
-        raise ValueError('Enrollment descriptor is too large.')
-    data = json.loads(raw)
+    from company_connection import read_enrollment
+    data = read_enrollment(source)
     issuer = profiles.text(data['issuer']).rstrip('/')
     parsed = urllib.parse.urlsplit(issuer)
     if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
@@ -139,7 +127,7 @@ def edit(profile, data):
             for key in list(identity['githubIds']): profiles.unlink_github(identity, key)
             profiles.save(data)
         elif choice == 'c' and company:
-            print('Use this company’s administrator-provided HTTPS realm and public client ID.')
+            print('Company connection: use administrator enrollment or guided application registration.')
             print('Your email domain does not grant company membership. Browser approval verifies access.')
             if account(profile, []) == 0:
                 address = profiles.connected_email(profiles.account_root(profile))
