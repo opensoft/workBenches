@@ -208,14 +208,15 @@ def main():
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument('--status', action='store_true')
     modes.add_argument('--logout', action='store_true')
+    modes.add_argument('--configure', action='store_true', help='Review company connection setup without signing in')
     args = parser.parse_args()
     if args.logout:
         return logout()
     if args.status:
         print(status())
         return 0
-    config = configuration()
-    if config is None:
+    config = None if args.configure else configuration()
+    if config is None or args.configure:
         from company_connection import connect
         try:
             import workbenches_host as native
@@ -227,6 +228,9 @@ def main():
                          company=os.environ.get('WORKBENCHES_ACCOUNT_COMPANY', 'Company'), host=native)
         if config is None:
             print('Account setup skipped. Bench installation does not require an account.')
+            return 0
+        if args.configure:
+            print('Company connection settings saved. Sign in to verify the application registration.')
             return 0
     return login(config)
 

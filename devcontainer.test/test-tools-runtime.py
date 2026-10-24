@@ -31,6 +31,14 @@ def check_service_buttons(home, env):
         shutil.copy(ROOT / name, repo / name)
     for name in ('scripts', 'config'):
         shutil.copytree(ROOT / name, repo / name, ignore=shutil.ignore_patterns('__pycache__'))
+    # Queue a disposable catalog entry, not a production bench whose container
+    # may legitimately belong to another checkout on the test workstation.
+    catalog = repo / 'config/bench-config.json'
+    data = json.loads(catalog.read_text())
+    data['benches'] = {'fixtureBench': {'url': 'https://example.invalid/fixtureBench.git',
+                                      'path': 'devBenches/fixtureBench',
+                                      'description': 'Disposable queue fixture'}}
+    catalog.write_text(json.dumps(data))
     helper = repo / 'scripts/setup-workbenches-account.py'
     helper.write_text('''import os, pathlib, sys, time
 root = pathlib.Path.home()
@@ -68,7 +76,7 @@ else:
                 transcript += chunk
             plain = terminal_screen(transcript)
             ready = False; keys = b''
-            if stage == 0 and 'Navigation:' in plain and re.search(r'REQUIREMENTS · (\d+)/\1 ready', plain):
+            if stage == 0 and 'Navigation:' in plain and 'fixtureBench · not installed' in plain and re.search(r'REQUIREMENTS · (\d+)/\1 ready', plain):
                 # Queue a bench; use only the Vault button on the main screen.
                 ready = True; keys = b' '
             elif stage == 1 and re.search(r'Vault\s+Missing\s+\[V Install\]', plain) and 'Changes selected: 1' in plain:

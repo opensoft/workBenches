@@ -14,7 +14,7 @@ descriptor. Returning users retain the existing configured sign-in flow.
 
 ## Requirements
 
-- **FR-001**: Missing company configuration opens a Profiles-style wizard offering administrator enrollment import first, registration guidance, existing registration and Back. Existing configured sign-in does not re-enroll or overwrite settings.
+- **FR-001**: Missing company configuration opens a Profiles-style wizard offering administrator enrollment import first, registration guidance, existing registration and Back. Existing configured sign-in does not re-enroll or overwrite settings. An explicit R Connection setup action can reopen the wizard without starting sign-in, including after an invalid client registration.
 - **FR-002**: Explain that Client ID is the application's registration at this provider, not the user/email/company ID. Registration is normally once per organization; the ID can be provider-generated or administrator-chosen. Suggested names are examples, not universally registered IDs.
 - **FR-003**: Guide current Keycloak-compatible public-client device authorization: client authentication off/no embedded secret, device grant on, required openid/profile/email, optional offline_access only for opted-in sync. Do not claim support for arbitrary OIDC providers or implement automatic registration/admin login.
 - **FR-004**: Validate issuer equality and same-origin HTTPS device/token/userinfo endpoints via discovery before confirmation. Discovery reports registration unverified; actual device authorization can subsequently validate it. Never perform a paid/cloud operation or login as a discovery check.

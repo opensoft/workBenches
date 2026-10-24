@@ -206,6 +206,16 @@ class ConnectionTests(unittest.TestCase):
         self.assertEqual(connect.call_args.kwargs['company'], 'Selected Company')
         login.assert_called_once_with(self.config)
 
+    def test_explicit_reconfigure_reopens_wizard_without_signing_in(self):
+        account.write_private(self.root / 'account-provider.json', self.config)
+        for result in (self.config, None):
+            with self.subTest(result=result), patch.object(account, 'CONFIG', self.root / 'account-provider.json'), \
+                    patch.dict(os.environ, {}, clear=True), patch.object(sys, 'argv', ['account', '--configure']), \
+                    patch.object(wizard, 'connect', return_value=result) as connect, patch.object(account, 'login') as login:
+                self.assertEqual(account.main(), 0)
+                connect.assert_called_once(); login.assert_not_called()
+        self.assertEqual(json.loads((self.root / 'account-provider.json').read_text()), self.config)
+
     def test_real_terminal_back_and_cancel_never_start_provider_login(self):
         for key, expected in ((b'b', 0), (b'q', 130)):
             with self.subTest(key=key):

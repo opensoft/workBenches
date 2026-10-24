@@ -104,7 +104,7 @@ def edit(profile, data):
             account(profile, ['--status'])
         print('E Email/name   G Connect GitHub   U Unlink GitHub')
         if company:
-            print('C Company sign-in   S Local sign-out   I Import enrollment')
+            print('C Company sign-in   R Connection setup   S Local sign-out   I Import enrollment')
             print('Y Company credential synchronization')
         print('A AI accounts   B Back   Q Cancel')
         choice = ask('Action', 'b').lower()
@@ -138,6 +138,8 @@ def edit(profile, data):
                         profiles.save(data)
         elif choice == 'i' and company:
             enrollment(profile)
+        elif choice == 'r' and company:
+            account(profile, ['--configure'])
         elif choice == 'y' and company:
             result = subprocess.run([sys.executable, str(HERE / 'setup-company-sync.py'), profile['id']])
             propagate_cancel(result.returncode)
@@ -296,7 +298,7 @@ def scope_menu(scope, data):
             lambda item: [item['email'], f'{len(item["githubIds"])} linked GitHub accounts',
                           'Enter to edit identity and GitHub links.',
                           'Company sign-in is separate from GitHub.' if company else 'Your personal identities stay separate from companies.'],
-            'A Add identity  D Default' + ('  C Sign in  I Enrollment  Y Sync  S Sign out  E Rename' if company else ''))
+            'A Add identity  D Default' + ('  C Sign in  R Connection setup  I Enrollment  Y Sync  S Sign out  E Rename' if company else ''))
         if action == 'b': return
         if action == 'enter': identity_menu(scope, identity, data)
         elif action == 'a': identity_menu(scope, identity_form(scope, data), data)
@@ -306,6 +308,7 @@ def scope_menu(scope, data):
             profiles.add_company({'companies': [s for s in data['companies'] if s['id'] != scope['id']]}, name, scope['email'])
             scope['name'] = name; profiles.save(data)
         elif company and action == 'i': enrollment(scope)
+        elif company and action == 'r': account(scope, ['--configure'])
         elif company and action == 's': account(scope, ['--logout'])
         elif company and action == 'y':
             result = subprocess.run([sys.executable, str(HERE / 'setup-company-sync.py'), scope['id']])
