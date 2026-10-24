@@ -144,10 +144,13 @@ printf 'fit=%s\n' "${setup_frame_lines[*]}"
             text = '\n'.join(lines)
             self.assertEqual('█▀▀█' in text, full)
             brand_index = next(i for i, line in enumerate(lines) if 'openBenches v1.7' in line)
-            self.assertIn('█' if full else 'Opensoft', lines[brand_index])
+            self.assertEqual(lines[brand_index - 1], '')
+            self.assertTrue(lines[brand_index].startswith('openBenches v1.7'))
+            self.assertTrue(lines[brand_index].endswith('Linux — Omarchy'))
             nav_index = next(i for i, line in enumerate(lines) if 'Workstation' in line)
-            self.assertEqual(lines[nav_index - 1], '')
-            self.assertTrue(lines[nav_index + 1].endswith(' Linux — Omarchy ─'))
+            self.assertEqual(lines[nav_index - 1], '─' * 87)
+            self.assertEqual(lines[nav_index + 1], '─' * 87)
+            self.assertEqual(brand_index, nav_index - 2)
             self.assertNotIn('workBenches v', text)
 
     def test_main_loop_uses_variable_signature(self):
@@ -263,7 +266,7 @@ printf 'ABOUT-WINDOW=%s\\n' "$setup_about_window"
                 if columns==80:
                     for name in ('cppBench','dotNetBench','flutterBench','frappeBench','goBench','javaBench','pyBench','rustBench'):
                         self.assertIn(name,text)
-                    self.assertEqual(about,'ABOUT-WINDOW=4')
+                    self.assertEqual(about,'ABOUT-WINDOW=2')
                     self.assertEqual(sum('CATEGORY' in line for line in lines),1)
                 if rows==0:self.assertNotIn('more',text)
                 if rows==40:

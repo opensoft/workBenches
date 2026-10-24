@@ -105,7 +105,7 @@ that a yes/no prompt would not. Enter on a Workstation row running its action
 
 ### D4. Head, selector area and notices
 
-Head: banner → version/OS line → nav → one rule. No per-step title or
+Head (2026-10-24 review): banner → blank row → version/OS line → upper rule → nav → lower rule. No per-step title or
 description lines ("too busy"). Directly under the rule is the step's selector
 area: the requirements strip on Workstation, the CATEGORY block on Benches, the
 identities line on Profiles, nothing on Agents and Tools; Review starts
