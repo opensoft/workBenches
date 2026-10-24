@@ -36,4 +36,24 @@ mounts. No running user bench or production credentials were used or changed.
 The feature is based on the final 1.6.1 candidate. Integration must preserve the
 separate stable-release sequence; this development version must not replace main
 before the requested 1.6.0/1.6.1 publication is resolved. PR CI and exact-head
-review remain T004's final acceptance steps.
+review are recorded below.
+
+## PR acceptance
+
+[PR #215](https://github.com/opensoft/workBenches/pull/215) implements
+[issue #213](https://github.com/opensoft/workBenches/issues/213) for milestone
+1.6.2. For implementation head `04882bcd3f53ca5eb4116aab3bc58dc149295391`:
+
+- Exact-head Codex review completed with no findings on 2026-10-24.
+- [Workstation Setup run 40118251848](https://github.com/opensoft/workBenches/actions/runs/40118251848)
+  passed regression, Tools runtime, credential images and component lifecycle.
+- [Release fixture run 40118251821](https://github.com/opensoft/workBenches/actions/runs/40118251821)
+  passed source/setup/launcher/estate suites and its CI-mode evidence gate.
+- [Broker/client/CPC run 40118251849](https://github.com/opensoft/workBenches/actions/runs/40118251849)
+  and the source-freeze check passed.
+
+This evidence closes T004's implementation acceptance. This final documentation
+commit records the already-reviewed implementation; it changes no runtime.
+Protected native/live release QA and attended provider registration/sign-in
+remain outside fixture acceptance. No v1.6.2 stable release is authorized or
+claimed here, and the PR stays stacked until the stable-release sequence resolves.
