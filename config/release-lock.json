@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "version": "1.6.0-rc.3",
+  "version": "1.6.1-rc.1",
   "repositories": [
     {
       "path": "bioBenches/gentecBench",
