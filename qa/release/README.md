@@ -90,6 +90,16 @@ code must be reviewed, pinned and exercise the real boundary it certifies.
 
 Provision:
 
+The designated GitHub QA identities are `Opensoft-Test-User-1` and
+`Opensoft-Test-User-2`; their test organization is `Opensoft-Testing`
+(accounts, organization, and both users' membership verified on 2026-10-20).
+Recheck membership before live tests. Use User 1
+for an allowed test profile and User 2 for a denied profile; temporarily remove
+User 2 when testing nonmember behavior. These are QA-only resources: grant no
+production memberships or production profile access. The source repository and
+restricted release runners remain in `opensoft`. A GitHub organization alone does
+not provision a Microsoft Entra tenant, company OIDC context, or test vault.
+
 1. Two designated GitHub QA user identities for personal/work selection, reuse,
    reauthentication and cancellation. They need no production memberships or
    repository write permissions. Store login/recovery factors only in the private
