@@ -123,6 +123,62 @@ class ReleaseAutomationTests(unittest.TestCase):
         with self.assertRaises(OSError):
             image_source.authorize(dict(commit='a' * 40, version='1.6.0'), unavailable)
 
+    def test_current_automation_keeps_legacy_entrypoints_for_supported_candidates(self):
+        manifest = rv.load_manifest()
+        supported = manifest['supportedReleaseLines']
+        self.assertTrue({'1.5', '1.6', '1.7'}.issubset(supported), supported)
+        current = (ROOT / 'VERSION').read_text().strip()
+        for product in dict.fromkeys([line + '.0' for line in supported] + [current]):
+            with self.subTest(product=product):
+                source = rv.selected(manifest, product, 'release')['source']
+                selected = rv.cases(source, product)
+                commands = {command['id']: command['argv'] for command in source['commands']
+                            if command['id'] in selected}
+                self.assertEqual(commands['source-lock'],
+                                 ['python3', 'scripts/release-workbenches.py', 'check'])
+                self.assertEqual(commands['release-regressions'],
+                                 ['python3', 'devcontainer.test/test-release-version.py'])
+
+    def test_legacy_shared_image_release_asset_reader_is_unchanged(self):
+        shared = module('legacy_shared_images', 'scripts/shared-images.py')
+        source = 'legacy-source'
+        image = 'ghcr.io/opensoft/workbenches-base@sha256:' + 'd' * 64
+        release_tag = 'shared-images-historical'
+        payload = json.dumps({'schemaVersion': 1, 'images': {'base': {'linux/amd64': {
+            'sourceHash': source, 'image': image}}}}).encode()
+        row = {'Os': 'linux', 'Architecture': 'amd64', 'Config': {'Labels': {shared.LABEL: source}}}
+        calls = []
+
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read(self, limit): return payload[:limit]
+
+        def command(argv, **kwargs):
+            calls.append((argv, kwargs))
+            if argv[:2] == ['docker', 'info']:
+                return subprocess.CompletedProcess(argv, 0, stdout='linux/x86_64\n')
+            if argv[:2] == ['docker', 'context']:
+                return subprocess.CompletedProcess(argv, 0, stdout='unix:///fixture.sock\n')
+            return subprocess.CompletedProcess(argv, 0)
+
+        with patch.object(shared, 'fingerprint', return_value=source), \
+             patch.object(shared, 'release_tag', return_value=release_tag), \
+             patch.object(shared, 'inspect', side_effect=[None, row]), \
+             patch.object(shared.subprocess, 'run', side_effect=command), \
+             patch.object(shared.urllib.request, 'urlopen', return_value=Response()) as network, \
+             patch.dict(os.environ, {'DOCKER_HOST': 'unix:///fixture.sock', 'DOCKER_CONTEXT': ''}):
+            self.assertEqual(shared.ensure('base'), 0)
+        network.assert_called_once_with(
+            f'https://github.com/opensoft/workBenches/releases/download/{release_tag}/shared-images.json', timeout=8)
+        pulls = [(argv, kwargs) for argv, kwargs in calls if argv[:2] == ['docker', 'pull']]
+        self.assertEqual(len(pulls), 1)
+        self.assertEqual(pulls[0][0], ['docker', 'pull', '--platform', 'linux/amd64', image])
+        self.assertEqual(pulls[0][1]['env']['DOCKER_HOST'], 'unix:///fixture.sock')
+        self.assertIn('DOCKER_CONFIG', pulls[0][1]['env'])
+        self.assertNotIn('DOCKER_CONTEXT', pulls[0][1]['env'])
+        self.assertIn(['docker', 'tag', image, 'workbench-base:latest'], [argv for argv, _ in calls])
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name) / 'source'; self.root.mkdir()
