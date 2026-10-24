@@ -4,10 +4,10 @@ Status values: `pending`, `in-progress`, `ready`, `landed`, `verified`, `blocked
 
 | Dependency | Required compatibility or slug change | Order | Status / evidence |
 |---|---|---|---|
-| Current repository publisher | Exact `opensoft/workBenches` + `opensoft/openBenches` allowlist before cutover | Pre-rename | in-progress |
-| Active release lines | Same publisher guard on `main`, `release/1.6.0`, and `release/1.7.0`, where recent publication runs occurred | Pre-rename | in-progress |
+| Current repository publisher | Exact `opensoft/workBenches` + `opensoft/openBenches` allowlist before cutover | Pre-rename | ready — local `4780e97`; 6 contract, 15 installer, 11 release-version, and 53 release-automation tests pass |
+| Active release lines | Same publisher guard on `main`, `release/1.6.0`, and `release/1.7.0`, where recent publication runs occurred | Pre-rename | ready — main `4780e97`; 1.6 `2650068`; 1.7 `e77705f`; 15 installer tests pass on each line |
 | openRepoProject | New/old checkout discovery; preserve root/marker/flag overrides; current docs after cutover | Consumer first | ready — local `0a5bf8c` + `edd45e4`; 103 tests and split-root/precedence smoke tests pass |
-| openRepoKit | Accept either checkout basename; preserve existing root ABI; propagate component/spec/assembly pins in order | Consumer first | in-progress |
+| openRepoKit | Accept either checkout basename; preserve existing root ABI; propagate component/spec/assembly pins in order | Consumer first | ready — code `f160de8`, spec `c1715d5`, assembly `fbdb889`; assembly validation + 18 tests pass; pins await landed legs |
 | new-workstation | New/old checkout and config discovery; preserve AI-Credentials boundary and recovery identity | Consumer first | ready — local `f8c4ce2`; 19 synthetic compatibility tests and shell syntax checks pass |
 | openProfiler | Native/WSL new-first/legacy-fallback manifest selection; no duplicate profiles; docs after cutover | Consumer first | ready — local `c630e65`; 27 Rust + 6 frontend tests, lint/format/build, and Windows-target checks pass |
 | Install-Wave-Terminal | New/old checkout discovery and root aliases; preserve generated artifacts and caches | Consumer first | ready — local `b2644c2`; compatibility, launcher lifecycle, syntax, and ShellCheck checks pass |
