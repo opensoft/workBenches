@@ -66,6 +66,16 @@ Defaults apply only to workBenches profile metadata. They do not change global
 Git author identity or the active native GitHub CLI account. Per-project account
 routing is not implemented by selecting a default.
 
+Private bench installation uses working SSH access first, then HTTPS. For
+GitHub HTTPS operations, setup keeps existing Git credential helpers and adds
+the native `gh auth git-credential` helper as a command-local fallback. This
+also works when Git runs in Tools and native gh uses the workstation keyring;
+setup does not write global Git configuration or switch the active account.
+An isolated Profiles connection is not automatically selected for Git operations.
+If access fails, sign in to the native GitHub CLI with an authorized account
+(`gh auth login --hostname github.com`), verify repository and organization SSO
+access, then retry the install. Existing worktrees and credentials are preserved.
+
 ## Company sign-in and AI profiles
 
 A company has multiple email identities and GitHub links, plus a separate scoped
