@@ -86,11 +86,11 @@ bootstrap in [the release guide](docs/releases.md#install-a-published-release).
 On a new workstation, install Git and download the standalone bootstrap.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/opensoft/workBenches/main/bootstrap.sh -o workbenches-bootstrap.sh
+curl -fsSL https://raw.githubusercontent.com/opensoft/openBenches/main/bootstrap.sh -o workbenches-bootstrap.sh
 bash workbenches-bootstrap.sh --setup
 ```
 
-Bootstrap clones to `~/Projects/workBenches`. Use `--directory PATH` to choose
+Bootstrap clones to `~/Projects/openBenches`. Use `--directory PATH` to choose
 another location, or omit `--setup` to clone without running setup. It prefers
 SSH when your existing SSH configuration or agent can access the repository;
 otherwise it falls back to HTTPS. SSH probes are noninteractive and require a
@@ -218,7 +218,7 @@ Your host's `openRepoShape`, `openRepoTools`, `park`, `resume`, `status`, `lane`
 When **Org workspace** is selected, setup installs the estate commands and runs `openRepoTools wip init` — the fourth link in the onboarding chain of lane-collision-protocol Amendment 9(e):
 
 ```text
-gh repo clone opensoft/workBenches && cd workBenches && ./setup.sh   # the host, and the estate commands
+gh repo clone opensoft/openBenches && cd openBenches && ./setup.sh   # the host, and the estate commands
 openRepoTools --install                            # (setup.sh already did this for you)
 openRepoTools wip init                             # your workspace repository
 pclaude <profile>
@@ -337,7 +337,7 @@ be configured again without deleting shell settings, workspaces, or credentials.
 ## Directory Structure
 
 ```
-workBenches/
+openBenches/
 ├── setup.sh                    ← Main entry point
 ├── base-image/                 ← Layer 0: workbench-base Dockerfile
 ├── user-layer/                 ← Layer 3: User personalization Dockerfile
@@ -495,7 +495,7 @@ sysBenches/cloudBench/docs/amnezia-server-runbook.md
 
 | Bench | Repository |
 |-------|----------|
-| workBenches (this repo) | [opensoft/workBenches](https://github.com/opensoft/workBenches) |
+| openBenches (this repo) | [opensoft/openBenches](https://github.com/opensoft/openBenches) |
 | cloudBench | [opensoft/cloudBench](https://github.com/opensoft/cloudBench) |
 | cppBench | [opensoft/cppBench](https://github.com/opensoft/cppBench) |
 | dotNetBench | [opensoft/dotNetBench](https://github.com/opensoft/dotNetBench) |

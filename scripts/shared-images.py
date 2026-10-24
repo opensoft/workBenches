@@ -17,6 +17,7 @@ CONTEXTS = {'base': 'base-image', 'dev': 'devBenches/base-image'}
 TAGS = {'base': 'workbench-base:latest', 'dev': 'dev-bench-base:latest'}
 REGISTRIES = {'base': 'ghcr.io/opensoft/workbenches-base', 'dev': 'ghcr.io/opensoft/workbenches-dev-base'}
 LABEL = 'io.workbenches.source'
+RELEASE_REPOSITORIES = ('opensoft/openBenches', 'opensoft/workBenches')
 
 def tracked_context_paths(root):
     """Use Git's file-mode contract for tracked recipes, independent of umask."""
@@ -75,6 +76,20 @@ def compatible(row, layer, source, platform, parent=None):
     return (labels.get(LABEL) == source and row.get('Os', '') + '/' + row.get('Architecture', '') == platform
             and (layer != 'dev' or labels.get('io.workbenches.parent') == parent))
 
+def manifest_image(payload, layer, platform, source, parent=None):
+    if len(payload) > 65536:
+        raise ValueError('manifest too large')
+    manifest = json.loads(payload)
+    if manifest.get('schemaVersion') != 1:
+        raise ValueError('unsupported manifest')
+    entry = manifest['images'][layer][platform]
+    if entry['sourceHash'] != source or (layer == 'dev' and entry['parentImageId'] != parent):
+        raise ValueError('source or parent mismatch')
+    image = entry['image']
+    if not re.fullmatch(re.escape(REGISTRIES[layer]) + r'@sha256:[0-9a-f]{64}', image):
+        raise ValueError('unapproved registry or digest')
+    return image
+
 def ensure(layer):
     if os.environ.get('WORKBENCHES_BUILD_LOCAL') == '1':
         print('Local build requested.')
@@ -94,22 +109,20 @@ def ensure(layer):
     try:
         explicit = os.environ.get('WORKBENCHES_IMAGE_MANIFEST')
         if explicit:
-            payload = Path(explicit).read_bytes()
+            image = manifest_image(Path(explicit).read_bytes(), layer, platform, source, parent)
         else:
-            url = f'https://github.com/opensoft/workBenches/releases/download/{release_tag()}/shared-images.json'
-            with urllib.request.urlopen(url, timeout=8) as response:
-                payload = response.read(65537)
-        if len(payload) > 65536:
-            raise ValueError('manifest too large')
-        manifest = json.loads(payload)
-        if manifest.get('schemaVersion') != 1:
-            raise ValueError('unsupported manifest')
-        entry = manifest['images'][layer][platform]
-        if entry['sourceHash'] != source or (layer == 'dev' and entry['parentImageId'] != parent):
-            raise ValueError('source or parent mismatch')
-        image = entry['image']
-        if not re.fullmatch(re.escape(REGISTRIES[layer]) + r'@sha256:[0-9a-f]{64}', image):
-            raise ValueError('unapproved registry or digest')
+            tag = release_tag()
+            for repository in RELEASE_REPOSITORIES:
+                try:
+                    url = f'https://github.com/{repository}/releases/download/{tag}/shared-images.json'
+                    with urllib.request.urlopen(url, timeout=8) as response:
+                        payload = response.read(65537)
+                    image = manifest_image(payload, layer, platform, source, parent)
+                except (OSError, ValueError, KeyError, TypeError):
+                    if repository == RELEASE_REPOSITORIES[-1]:
+                        raise
+                else:
+                    break
         print(f'Pulling verified {layer} image for {platform}...', flush=True)
         # Never use the workstation's registry logins for this public pull.
         with tempfile.TemporaryDirectory(prefix='workbenches-public-pull-') as directory:

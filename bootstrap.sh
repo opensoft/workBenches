@@ -114,7 +114,7 @@ workbenches_init_submodules() {
 }
 
 workbenches_bootstrap_main() {
-    local destination="${HOME:?HOME is required}/Projects/workBenches" setup=false branch=""
+    local destination="${HOME:?HOME is required}/Projects/openBenches" setup=false branch=""
     command -v git >/dev/null 2>&1 || { echo 'Install Git first, then rerun bootstrap.' >&2; return 1; }
     case "${1:-}" in
         --clone)
@@ -149,11 +149,11 @@ workbenches_bootstrap_main() {
     local -a clone_args=()
     [[ -z "$branch" ]] || clone_args=(--branch "$branch")
     mkdir -p "$(dirname "$destination")" || return $?
-    workbenches_clone https://github.com/opensoft/workBenches.git "$destination" "${clone_args[@]}" || return $?
+    workbenches_clone https://github.com/opensoft/openBenches.git "$destination" "${clone_args[@]}" || return $?
     if [[ "$setup" == true ]]; then
         (cd "$destination" && bash ./setup.sh)
     else
-        printf 'Cloned workBenches to %s. Run ./setup.sh from that directory when ready.\n' "$destination"
+        printf 'Cloned openBenches to %s. Run ./setup.sh from that directory when ready.\n' "$destination"
     fi
 }
 
