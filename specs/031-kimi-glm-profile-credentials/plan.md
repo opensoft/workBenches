@@ -1,93 +1,132 @@
 # Implementation Plan: Kimi and GLM profile credentials
 
-Branch `031-kimi-glm-profile-credentials` · 2026-10-23 · [Specification](spec.md).
-Target 1.7. Documentation complete; runtime tasks remain unchecked.
+Branch `031-kimi-glm-profile-credentials` · target 1.7. Original plan 2026-10-23;
+all Codex/Astra review revisions approved by Brett Heap on 2026-10-24.
+[Specification](spec.md) · [approved review](review-2026-10-24.md).
+Documentation only: runtime tasks and live qualification remain pending.
 
-## Approach and dependencies
+## Dependencies and delivery milestones
 
-Build on feature 029's six-step wizard and the existing 026 identity/027 broker
-contracts. Land the documentation as a separate 1.7 scope addition; implement in
-this feature worktree after reviewing integration with the current 1.7 head.
-Do not backport the new provider schemas to the 1.6 release as a documentation side effect.
+Integrate current 029 wizard/026 identity/027 broker contracts and reconcile
+feature 032's managed installer interface before dependent runtime work. Use this
+feature worktree and declared Tools/test containers; preserve the 1.6 line and
+other worktrees. No source pins, live credentials or cloud resources change here.
 
-Use Bash launchers, Python metadata/adapters, jq and the declared Tools/test
-containers. Native vendor sign-in uses the existing workstation callback boundary.
-Secret stores remain the configured Azure Key Vault, Bitwarden or 1Password
-adapters; company clients use the broker and never acquire vault service authority.
-Use existing mount generation rather than editing separate bench repositories
-or advancing submodule pins implicitly.
+Deliver in this order:
 
-The project constitution is still the unfilled template. Apply global workflow
-rules and these concrete gates: explicit account binding, owner-only paths,
-backward-compatible manifests, no secret diagnostics, no provider requests from
-rendering, and fixture evidence separated from attended live acceptance.
+1. **M1 — Local profiles, login and persistence:** isolated homes, actual client
+   identification, selected routing, native terminal handoff, factual status,
+   safe migration and real workstation/bench persistence. M1 does not claim
+   remote recovery or company sharing.
+2. **M2 — Qualified personal credential retrieval:** projection-aware recovery,
+   scoped enrollment, conflict-safe merges and the minimum live rows below.
+   Personal recovery eligibility does not authorize company publication.
+3. **M3 — Qualified company synchronization:** immutable local/broker binding,
+   separate use/publish/maintain grants, stable workBenches control-plane paths,
+   projection-aware durable sync and qualified CPC operations. Shared Kimi OAuth
+   and CPC refresh remain disabled until separately qualified.
 
-## Delivery sequence
+The single executable checklist is [tasks.md](tasks.md). These are separate
+release outcomes; finishing M1 does not count as delivering M2 or M3.
 
-1. Add explicit `kimi-code` composition/identity metadata, validated profile paths
-   and mode declarations. Preserve existing GLM schemas and paths; version any
-   changed recovery envelope and reject unknown versions before mutation.
-2. Add the Kimi launcher and profile provisioning; retain GLM launcher behavior.
-   Test environment isolation, explicit account selection, cancellation, default
-   home preservation and same-scope identity collisions before UI integration.
-3. Extend shared runtime installation and all standard home/mount consumers.
-   Pre-create bind sources as the host user. Persist Kimi profiles and GLM roots
-   through Wave/devcontainer/Compose paths; never copy credentials into images.
-4. Implement bounded projection/merge adapters. Qualify the exact native formats
-   and enumerate permitted secret fields before enabling each remote mode.
-5. Extend recovery enrollment/status and the existing broker/CPC mode registry.
-   Reuse durable conflict/idempotency and writer coordination rather than a
-   separate synchronization algorithm. Keep unsafe/unqualified modes disabled.
-6. Add Profiles/dashboard login/check/recovery actions and honest status labels.
-   Missing CLI is a prerequisite state; a credential adapter is not a Harness
-   installer and does not add component selection keys.
-7. Wire fixtures and native/live cases into current 1.7 CI/release automation,
-   refresh docs from tested behavior and record exact version/mode/platform evidence.
+## Qualification before dependent implementation
 
-## Provider eligibility at specification time
+T000 records an operation-level matrix for the exact executable/package/version,
+native credential layout/member, provider/region/endpoint, authentication mode,
+verification/account-binding evidence, store and claimed platform.
 
-| Mode | Local operation | Remote recovery/company use | Automated maintenance |
+- Freeze native location/field allowlists, projection, verification and merge
+  behavior before enabling recovery. Unknown client/layout is unsupported.
+- Establish independent provider-account binding before company publication;
+  email, membership or a typed path is not proof. Missing evidence blocks that
+  operation without relabeling personal recovery as company sharing.
+- Define routing override rejection/review and exact provider/model/endpoint
+  confirmation after login and before launch. No paid status probes.
+- Establish native writer coordination. If an advisory lock cannot coordinate a
+  native writer, defer installation to a qualified quiescent window or conflict.
+- Resolve actual client identity/update behavior on each workstation and bench,
+  including legacy Kimi, self-updates and external installs.
+
+Qualification is evidence, not an inference from token/account field names.
+Kimi Code 2.3.1 is the initial target, not a permanent pin or proven minimum;
+qualify any newer actual client instead of trusting a stale installer receipt.
+
+## Minimum 1.7 retrieval acceptance
+
+The initial named retrieval target is the existing Azure Key Vault recovery path,
+using existing authorized infrastructure and disposable test accounts. These
+rows are acceptance targets, not implemented/qualified support claims.
+
+| Milestone | Provider/authentication mode | Store | Required evidence |
 | --- | --- | --- | --- |
-| Kimi native OAuth | Isolated vendor login; native refresh | Individually qualify recovery; company sharing disabled initially | CPC refresh disabled until supported rotation/concurrency is proven |
-| Kimi API key | Explicit selected provider/account | Planned adapter; qualify ownership and grants before enablement | Health/expiry if supported; provider/admin rotation |
-| GLM Coding Plan API key | Existing isolated OpenCode login | Planned scoped Z.AI adapter; qualify account/plan binding and grants | Health/expiry if supported; provider/admin rotation |
-| GLM standard API key | Explicitly distinct from Coding Plan | Separate qualified endpoint/mode binding | No invented OAuth refresh |
+| M2 required | Kimi Platform API key, exact qualified region/endpoint | Azure Key Vault | Attended fresh named-profile restore and selected launch; occupied-target refusal; outage retry; unrelated TOML fields retained |
+| M2 required | GLM Z.AI Coding Plan API key | Azure Key Vault | Attended selected native-member restore and selected plan/endpoint launch; occupied-target refusal; outage retry; other OpenCode members retained |
+| Independently qualified | GLM standard API key and other store combinations | Azure Key Vault, Bitwarden or 1Password as applicable | Same per-mode/store live evidence before enabled/support claims; all stores still receive synthetic fixtures |
+| Disabled until qualified | Kimi OAuth remote recovery, company sharing and CPC refresh | Any | Native-format, eligibility, account-binding and supported rotation/concurrent-writer evidence per operation |
 
-None of the planned remote modes is certified by these docs. Missing independent
-account validation blocks company publication for that mode; never substitute an
-entered email as proof. Record supported evidence or an explicit disabled result.
+Required M2 rows cover native Linux and WSL Linux workstation/bench execution
+before those platforms are claimed. Use existing infrastructure; tests do not
+authorize provisioning or production account copying. An unqualified required
+row blocks the combined retrieval claim. Record M1 as local-only and defer M2
+explicitly rather than passing with an empty enabled set.
+M3 requires its own per-mode grants/binding/live-broker gate; M2 cannot satisfy it.
 
-## Expected implementation owners
+## Runtime architecture
 
-- Metadata/UI: `scripts/compose-ai-profiles.py`, `scripts/onboard-ai-profiles.py`,
-  `scripts/setup-ai-profiles.sh`, `scripts/setup-profiles.py`,
-  `apps/credential-manager/`, provider manifests/examples and credential planning.
-- Runtime: new `base-image/files/kimi-profile` and `scripts/setup-kimi-profiles.sh`,
-  existing `base-image/files/provider-profile`, image launcher wiring,
-  `scripts/setup-bench-home.py`, `scripts/wave-container-shell.sh`, mount docs/template.
-- Credentials: `credential-container/`, `scripts/profile_credentials.py`,
-  recovery/backup helpers, `scripts/credential_sync_client.py`, `scripts/company_sync.py`,
-  broker `core.py`, `oauth_adapter.py`, `cpc.py` and their declared Docker images.
-- Tests: focused Kimi/GLM profile and credential adapter suites, existing setup,
-  provider-profile, recovery, broker, Tools-runtime and lifecycle suites; 1.7 CI.
+- **Metadata:** additive Kimi manifest; preserve GLM aliases/paths. Separate
+  `authMode`, `syncPolicy` and `projectionSchemaVersion`. Legacy broker
+  `mode` remains policy; version/migrate explicitly and reject incompatible
+  mutations.
+- **Login/launch:** validate effective routing, native member and client identity.
+  Wizard/dashboard login needs a real terminal/PTY with cancellation, cleanup,
+  completion detection and saved UI return. File RPC and closed stdin are not
+  interactive transport. Direct-terminal and UI login are separate checks.
+  GLM standard/Coding Plan dispatch must target or verify the selected member.
+- **Control plane:** derive workBenches config/company/lease roots in the parent;
+  apply GLM XDG and Kimi home changes only to the vendor child. Before-launch and
+  after-login sync use the same original roots and lease.
+- **Adapters:** `inspect → extract → validate → fingerprint → merge/install`.
+  Publish/hash only the selected projection; track backing-file revision
+  separately. Preserve unrelated records, coordinate native writers and retain
+  durable pending-operation/install/baseline reconciliation. Recovery and the
+  real sync client share adapters packaged in both runtime images.
+- **Recovery:** exact owned profile/member enrollment, private bounded envelopes,
+  explicit backed-up replacement, offline preservation and safe crash recovery.
+- **Company:** select validated local profiles rather than arbitrary JSON paths.
+  Bind immutable local ID/provider/auth mode/member/broker ID; exclude personal/default roots,
+  including their custom locations; allow validated company profiles in custom roots. Reuse grants/version/idempotency; unrelated native
+  file edits never become selected-credential publications.
+- **Persistence/installers:** update actual shared mount consumers without
+  implicit bench-repository edits. Pre-create host-owned sources. Consume 032
+  verified package identity and actual runtime observations. Managed updates
+  belong to workBenches; prevent vendor auto-install bypass. Do not silently
+  rewrite external installation policy. Requalify after version/layout/PATH/
+  executable changes and preserve credentials.
+- **UI/model:** separate presence, verified access/account, entitlement and
+  freshness. Bind observations to credential fingerprint/endpoint/account/client.
+  Explicitly set and verify `max`; K3.1 Pro's current vendor default is `high`.
+  Validate native model IDs/aliases and detect substitution. Preserve queue/focus;
+  a default login cannot qualify an empty named profile.
 
-## Governed invariants
+## Implementation owners and validation
 
-- `config/` — provider identities, metadata/credential contracts and release test declarations.
-- `credential-container/`, `credential-broker/` — credential formats, grants and custody boundaries.
-- `scripts/credential_sync_client.py`, `scripts/company_sync.py` — durable publication and safe synchronization.
-- `base-image/files/`, `scripts/wave-container-shell.sh`, `scripts/setup-bench-home.py` — selected account runtime and persistent storage isolation.
-- `openspec/`, `.github/workflows/` and source pins remain governed globally.
+T001/T002 own metadata and launchers; T002A owns interactive transport and the
+Tools/dashboard boundary; T003 owns mount/032 compatibility; T004 owns projection
+adapters and image packaging; T005 owns recovery; T006 owns company enrollment/
+client/broker/CPC; T007 owns personal-recovery UI/model observations and T007B
+owns company UI after T006; T008 owns the concrete
+acceptance matrix and exact-head CI gate; T009 reconciles docs; T010 records
+attended milestone outcomes. T000 qualifies dependent operations first.
 
-## Validation and landing
+Run named focused and affected existing suites in declared containers. Include
+real sync-client merge/crash tests, terminal handoff/cancellation, default versus
+named-profile readiness, cross-identity legacy-copy rejection and image import
+smokes. Use synthetic secret canaries; no secret arguments/logs/layers/artifacts.
+Fixture success cannot replace attended provider acceptance.
 
-Run project checks in declared containers. Focused tests must fail against the
-missing behavior before production changes. Use synthetic secrets for fixtures;
-the native boundary is exercised without reading production token contents.
-Test CLI-present/no-login separately from authenticated access.
-
-The [quickstart](quickstart.md) defines attended acceptance and evidence. Before
-release, rebase/integrate with current 1.7 and its release automation; add required
-provider cases rather than treating old generic suites as new coverage. Report
-unsupported modes explicitly, require exact-head review/CI and preserve the
-existing release publication gate. Do not deploy billable services from tests.
+Before release, validate expected repository/SHA/trusted workflow and every
+required case for each claimed milestone/platform. An unrelated green run ID is
+not evidence. Preserve exact-head review and existing publication gates.
+Governed areas remain config/schema, credential custody/broker, company sync,
+native callbacks, launcher/home mounts, OpenSpec and CI. The constitution remains
+a template; global workflow and these concrete gates apply.

@@ -53,3 +53,17 @@ CPC refresh remain disabled until qualified per mode. Existing release gates,
 including exact-head native/live acceptance, remain required. See the
 [planned user guide](kimi-glm-profile-credentials.md) and
 [implementation tasks](../specs/031-kimi-glm-profile-credentials/tasks.md).
+
+All Codex/Astra review revisions were approved by Brett on 2026-10-24; runtime
+implementation remains pending. Deliver local profiles/login/persistence (M1),
+qualified personal retrieval (M2), then independently qualified company sync
+(M3). Minimum M2 acceptance names Kimi Platform API-key and GLM Coding Plan
+API-key Azure Key Vault round trips on every claimed native Linux/WSL runtime;
+zero enabled retrieval modes is an explicitly deferred M2, not success.
+
+The revised contract requires interactive native terminal handoff, selected-
+record TOML/JSON merge/sync, stable company control-plane paths, immutable owned
+profile binding, separate authentication/sync-policy fields, 032 installer/update
+qualification and real boundary/image-packaging tests. K3.1 Pro max effort is
+explicitly configured/verified; its observed vendor default is high. See the
+[approved review record](../specs/031-kimi-glm-profile-credentials/review-2026-10-24.md).

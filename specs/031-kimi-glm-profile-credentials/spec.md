@@ -4,6 +4,7 @@
 **Created**: 2026-10-23  
 **Target**: workBenches 1.7  
 **Status**: Specified; implementation not started  
+**Review approval**: Brett Heap approved all Codex/Astra review changes on 2026-10-24; see [approved review](review-2026-10-24.md).
 **Input**: Brett: "spec this and document this to add to 1.7" following the
 review of Kimi isolation, persistent mounts and Kimi/GLM credential recovery gaps.
 
@@ -68,6 +69,14 @@ works without enabling unqualified company OAuth sharing.
 - **FR-013**: Keep Kimi client version, model ID, reasoning effort and account entitlement separate. Initial compatibility testing targets CLI 2.3.1 and `k3.1-pro`, with thinking enabled and effort `max`; preserve existing choices and offer only entitled models. An unavailable request is explicit, with no silent model substitution. Model changes start a new session.
 - **FR-014**: Profiles actions retain wizard focus, pending component selections and narrow-terminal behavior. The Harness installation/manual classification and selection JSON do not change merely from adding credentials support. CLI missing/unsupported gets an actionable prerequisite state.
 - **FR-015**: Reuse existing 1.7 release gates and add provider-specific fixture and attended live acceptance. No test copies production accounts or authorizes cloud provisioning. Unsupported modes remain visible as unsupported; no tested mode's evidence qualifies another.
+- **FR-016**: Wizard and dashboard login MUST use an explicit interactive native terminal/PTY handoff with the selected profile environment, cancellation, process cleanup and completion detection. The existing file-based Tools callback and dashboard `stdin=DEVNULL` path do not satisfy this requirement. Entered secrets and terminal transcripts MUST NOT enter diagnostic logs or RPC arguments. Direct terminal login and wizard/dashboard login require separate acceptance.
+- **FR-017**: Recovery and synchronization MUST share a projection-aware adapter interface: inspect, extract, validate, fingerprint and merge/install. Fingerprint/publish only the selected credential; track the backing-file revision separately. Preserve unrelated TOML/JSON records, detect selected-record conflicts, and retain durable idempotency/crash reconciliation. An advisory workBenches lease does not coordinate an unmodified native writer; refuse installation or require a qualified quiescent window when safe coordination cannot be established.
+- **FR-018**: Account isolation MUST validate effective routing, including native provider ID, authentication mode, endpoint, credential source, model/alias and override precedence. Test Kimi `KIMI_MODEL_*`, arbitrary `api_key_env`, custom Authorization headers and OAuth/API endpoint overrides, plus OpenCode project/inline/custom configuration. GLM standard API and Coding Plan login/status/logout MUST target or verify the selected native member. Preserve GLM aliases/paths, not its unconditional Coding Plan instruction or generic dispatch.
+- **FR-019**: Company enrollment MUST select a validated, owned local profile, derive its target/member, and bind immutable local profile ID, provider, authentication mode and broker profile ID. Personal/default roots, including their configured custom locations, MUST be excluded from company publication. Keep workBenches company configuration and lease paths stable; apply GLM XDG changes only to the vendor child. Separate `authMode` from existing broker `syncPolicy` (`portable` or `broker-refresh`), with versioned compatibility rules.
+- **FR-020**: Integrate with feature 032's installer identity/readiness contract for workstation and bench execution. Resolve the actual executable, package identity and runtime version; a command named `kimi`, a version string alone or a stale receipt is insufficient. Define update ownership and requalify affected credential operations after upgrades, rollbacks, PATH changes or layout changes. Test legacy/current coexistence, explicit executable overrides and uninstall exposing another client. Vendor migration does not import legacy OAuth credentials or authorize cross-identity copying; imported API-key modes receive normal presence/verification assessment.
+- **FR-021**: Require the named minimum retrieval outcomes in the plan before claiming Kimi/GLM credential retrieval for 1.7. A result with all remote modes disabled satisfies only the explicitly labeled local-profile milestone. Personal recovery, company sharing and OAuth maintenance have independent eligibility and release outcomes; do not weaken binding evidence to meet a delivery target.
+- **FR-022**: Verification observations MUST be bound to the credential fingerprint, effective endpoint, account binding and qualified client identity/version; rotation or routing changes invalidate the prior observation. Configure and verify the requested K3.1 Pro `max` effort explicitly: the vendor default observed on 2026-10-24 is `high`. Validate native aliases and endpoint model IDs before launch and detect/report vendor model substitution rather than accepting a fallback as success.
+- **FR-023**: CI MUST exercise the real sync client and Tools/dashboard login boundary, container packaging/imports, existing affected suites and the explicit client × authentication mode × operation × store × platform acceptance matrix. Exact-head release evidence MUST be checked against the expected repository, commit, trusted workflow and required cases; a successful unrelated workflow run ID is insufficient.
 
 ## Edge Cases
 
@@ -101,10 +110,19 @@ See the [contract](contracts/provider-credentials.md).
   images or release artifacts; unsupported OAuth operations remain disabled.
 - **SC-005**: Existing setup, identity, recovery and company-sync regression suites
   remain green; live evidence records exact client version/mode/platform.
+- **SC-006**: The minimum Kimi API-key and GLM Coding Plan API-key recovery rows
+  in the plan pass attended round trips on each claimed platform, or the retrieval
+  milestone is explicitly deferred. Zero enabled recovery modes cannot pass it.
+- **SC-007**: Real Tools/dashboard terminal handoff, GLM control-plane preservation,
+  installer identity/update handling and projection-aware sync pass their named
+  boundary tests; default credentials do not satisfy empty named profiles.
 
 ## Decisions and Assumptions
 
 Scope is specified for 1.7, not an instruction to implement or publish now.
+The approved 2026-10-24 revision delivers local profiles/login/persistence first,
+qualified credential retrieval second, then company synchronization. Approval
+records requirements and future work; no runtime task is marked complete here.
 Existing broker and recovery infrastructure are reused where deployed. Native Kimi
 OAuth is first-class local login; its remote eligibility is a qualification gate,
 not an assumption that a subscription token can be shared. No new identity or

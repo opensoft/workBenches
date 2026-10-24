@@ -1,27 +1,45 @@
 # Kimi and GLM profiles — planned for 1.7
 
-**Status: specified, not implemented.** See [feature 031](../specs/031-kimi-glm-profile-credentials/spec.md)
-and its [tasks](../specs/031-kimi-glm-profile-credentials/tasks.md).
+**Status: approved specification, not implemented.** Brett approved all Codex/
+Astra review changes on 2026-10-24. See [feature 031](../specs/031-kimi-glm-profile-credentials/spec.md),
+[approved review](../specs/031-kimi-glm-profile-credentials/review-2026-10-24.md)
+and its sole [runtime task list](../specs/031-kimi-glm-profile-credentials/tasks.md).
 
 ## Current behavior
 
-GLM uses `pglm`/`pzai` with isolated OpenCode homes. `pglm login PROFILE` selects
-the matching Z.AI provider/plan and accepts its API key; `pglm PROFILE` launches it.
-The dashboard currently provides sign-in guidance, not live key verification.
-Kimi supports manual isolation with `KIMI_CODE_HOME` and `/login` for native OAuth
-or a platform API key. Its workBenches composer, launcher, dashboard adapter and
-standard persistent profile mount are missing. Neither provider yet has a
-dedicated automatic recovery/company-sync adapter.
+GLM has `pglm`/`pzai` and profile-local OpenCode XDG roots, but currently always
+instructs Coding Plan and dispatches generic OpenCode auth commands. The planned
+revision preserves aliases/paths while targeting or verifying the actual selected
+standard/Coding Plan member. Dashboard guidance is not live key verification.
+
+Kimi can be manually isolated with `KIMI_CODE_HOME` and its native `/login`.
+Its composed profiles, launcher, standard persistent mounts and Kimi/GLM recovery/
+company adapters are not supplied by these documentation changes.
+
+## Approved delivery order
+
+1. **Local profiles/login/persistence (M1):** named isolated homes, correct client
+   and routing, native interactive sign-in from the wizard/dashboard, honest
+   status, migration boundaries and retained homes after bench recreation/reboot.
+2. **Qualified personal credential retrieval (M2):** restore only the selected
+   credential from an existing store without losing other config/provider keys.
+3. **Qualified company synchronization (M3):** independently authorized owned
+   profile/broker binding, separate use/publish/maintain grants and safe versioned
+   synchronization. Company membership alone does not grant a provider account.
+
+The initial required retrieval tests are Kimi Platform API-key and GLM Coding
+Plan API-key recovery through existing Azure Key Vault on each claimed native
+Linux/WSL runtime. Other stores/modes need their own qualification. These are
+acceptance targets, not current support claims. If required recovery cannot be
+qualified, label the release local-only and explicitly defer retrieval; an empty
+enabled-mode list cannot satisfy the retrieval milestone.
 
 ## Planned account workflow
 
-Select an identity in Profiles → Personal or company → AI accounts, choose Kimi
-Code or GLM and a named account, then sign in, verify, recover or launch explicitly.
-Company/GitHub sign-in does not authenticate either provider. Metadata contains
-names, emails and references, not secrets. Cancel preserves completed steps,
-other identities and the component queue.
-
-Planned Kimi commands:
+Select an identity → AI accounts → Kimi Code or GLM → named profile. Login opens
+a native interactive terminal under that selected profile and returns to the
+wizard/dashboard after completion or cancellation. Entered keys/transcripts are
+not diagnostic logs. Company/GitHub sign-in does not authenticate the provider.
 
 ```bash
 pkimi list
@@ -30,29 +48,42 @@ pkimi status team01
 pkimi team01
 ```
 
-Each Kimi account gets a home under
-`$HOME/.kimi-code-profiles/profiles/<profilePath>`. Existing GLM paths/aliases stay.
-Importing a default Kimi login is explicit and never duplicates it into all
-identities. Managed homes persist through bench recreation/reboot; uninstall
-preserves them. Persistence cannot keep a killed process running or make a
-revoked provider login valid.
+Kimi homes use `$HOME/.kimi-code-profiles/profiles/<profilePath>`; GLM paths stay.
+Validate the effective account/provider/endpoint, not just its directory. Reject
+conflicting model/header/API/config overrides. Keep workBenches company settings
+outside vendor child XDG changes so launch synchronization still finds them.
 
-## Credential custody and model choice
+Feature 032 installs the CLI; 031 validates the actual executable/package/version
+for credential operations. Managed updates remain workBenches-owned and runtime
+changes need requalification. Legacy configuration/history migration does not
+copy OAuth logins. Importing defaults is reviewed and does not duplicate one
+credential into every identity.
 
-Recovery is opt-in using an existing configured vault. Export only the selected
-credential projection, excluding sessions, plugins, other keys and unrelated
-settings. Restore preserves occupied profiles by default; reviewed replacement
-is backed up. Offline stores retain usable local credentials.
+## Credential recovery and status
 
-Company sync additionally requires exact broker grants and a qualified provider
-mode. Membership or email is insufficient. API keys rotate through the provider/
-administrator; Kimi OAuth sharing and CPC refresh stay disabled until qualified.
+Export a minimal versioned projection, never the full Kimi home/TOML or mixed
+OpenCode auth file. Restore merges the selected member, preserves unrelated
+fields, detects selected-record races and coordinates native writers or waits
+for a safe quiescent window. Occupied destinations are preserved unless a
+reviewed backed-up replacement is requested. Offline stores retain local data.
 
-Status separates credential presence, last verified access, model entitlement and
-sync freshness. No secrets are displayed or paid generation used for rendering.
-Initial compatibility testing targets Kimi Code 2.3.1. Offer k3.1-pro with thinking/
-max when entitled, preserve existing choices and start a new session on model
-change. Unavailable requests are explicit, never silently substituted.
+Company enrollment derives the selected target from validated owned metadata,
+not an arbitrary path. Personal/default roots remain outside company publication, including their custom
+locations. Validated company profiles may use a configured custom profile root. Authentication mode and synchronization policy are separate facts.
+Keep unqualified Kimi OAuth recovery/sharing/CPC refresh disabled; API-key
+rotation is not OAuth refresh. Personal recovery does not qualify company sharing.
 
-See [source research](../specs/031-kimi-glm-profile-credentials/research.md) and
-[acceptance](../specs/031-kimi-glm-profile-credentials/quickstart.md).
+Status separates presence, fingerprint/account/endpoint/client-bound verified
+access, model entitlement and sync freshness. Changing a key/endpoint invalidates
+old verification. Default credentials cannot authenticate empty named profiles.
+No secrets are displayed or paid generation used as a status probe.
+
+Kimi Code 2.3.1 remains the initial compatibility target. For entitled K3.1 Pro,
+explicitly configure and verify thinking/max: the observed vendor default is
+high. Validate endpoint IDs/local aliases and report fallback/substitution.
+Preserve existing model choices and start a new session for model changes.
+
+Persistent homes survive bench restart/recreation and host reboot; persistence
+does not keep killed processes running or make revoked logins valid. Uninstall
+preserves homes by default. See [acceptance](../specs/031-kimi-glm-profile-credentials/quickstart.md)
+for the real native/WSL, store, sync and runtime-image evidence required.
