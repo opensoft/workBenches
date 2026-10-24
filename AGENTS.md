@@ -15,5 +15,5 @@ OpenSpec/Speckit protocol and project bootstrap contract.
 - Preserve unrelated changes in the parent checkout and in bench submodules.
 
 <!-- SPECKIT START -->
-Active implementation plan: `specs/027-company-credential-sync/plan.md` (v1.6 feature branch; keep v1.5 release fixes separate).
+Active implementation plan: `specs/033-company-connection-wizard/plan.md` (v1.6.2 company onboarding; preserve released 1.6.0/1.6.1 behavior).
 <!-- SPECKIT END -->

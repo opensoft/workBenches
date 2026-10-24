@@ -97,8 +97,14 @@ An administrator can supply a local JSON file or HTTPS URL with this content:
 ```
 
 Choose **I Import enrollment** and review the displayed realm and public client
-before saving. Redirects are refused; use the final trusted URL. Alternatively,
-**C Company sign-in** prompts for the realm and client if none is configured.
+before saving. Redirects are refused; use the final trusted URL.
+**C Company sign-in** for an unconfigured company now opens a
+guided connection menu: import administrator setup, follow registration guidance,
+or enter an existing application's settings. Client ID identifies that registered
+application, not the user/company ID. Already-configured sign-in is unchanged.
+**R Connection setup** repairs a company's settings without starting sign-in.
+See [Connect a company](company-connection.md) for the public-client/device-flow
+settings, native browser actions and reusable non-secret enrollment export.
 Passwords and MFA stay in the browser. Each company's local session is separate.
 After successful company sign-in, setup offers to add the email confirmed as
 verified by the sign-in server as a company identity. It does not

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.2 — In development
+
+- Guide first company connection through administrator enrollment import,
+  application registration instructions and existing registration settings (#213).
+- Explain Client ID, validate discovery before saving, and export only non-secret
+  enrollment metadata; preserve configured device login and company isolation.
+
 ## 1.6.0-rc.1 — 2026-10-19
 
 Frozen release candidate, not a stable release. See the
