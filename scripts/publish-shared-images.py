@@ -89,15 +89,18 @@ def published_digest(layer, tag):
         raise RuntimeError('Expected exactly one published digest.')
     return refs[0]
 
+PUBLICATION_REPOSITORIES = frozenset({'opensoft/workBenches', 'opensoft/openBenches'})
+
+
 def main():
+    repository = os.environ['GITHUB_REPOSITORY']
+    if repository not in PUBLICATION_REPOSITORIES:
+        raise RuntimeError('Publication is restricted to the source repository.')
     # No workstation credentials or user-specific Layer 3 are ever published.
     platform = run(['docker', 'info', '--format', '{{.OSType}}/{{.Architecture}}'],
                    capture_output=True, text=True).stdout.strip().replace('x86_64', 'amd64')
     if platform != 'linux/amd64':
         raise RuntimeError('This initial release supports linux/amd64; other platforms build locally.')
-    repository = os.environ['GITHUB_REPOSITORY']
-    if repository != 'opensoft/workBenches':
-        raise RuntimeError('Publication is restricted to the source repository.')
     release_url = f'https://github.com/{repository}/releases/download/{shared.release_tag()}/shared-images.json'
     try:
         with urllib.request.urlopen(release_url, timeout=15) as response:

@@ -56,6 +56,42 @@ class ImageTests(unittest.TestCase):
         module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
         self.assertEqual(module.shared.release_tag(),shared.release_tag())
 
+    def test_publisher_accepts_exact_old_and_new_repository_slugs(self):
+        spec=importlib.util.spec_from_file_location('publisher',ROOT/'scripts/publish-shared-images.py')
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        allowed = frozenset({'opensoft/workBenches', 'opensoft/openBenches'})
+        self.assertEqual(module.PUBLICATION_REPOSITORIES, allowed)
+        for repository in sorted(allowed):
+            with self.subTest(repository=repository), patch.dict(os.environ, {'GITHUB_REPOSITORY':repository}), \
+                 patch.object(module, 'run', side_effect=RuntimeError('platform probe reached')) as docker, \
+                 patch.object(module.urllib.request, 'urlopen') as network, \
+                 patch.object(module, 'github') as publication, patch.object(module, 'prepare_image') as build:
+                with self.assertRaisesRegex(RuntimeError, 'platform probe reached'):
+                    module.main()
+                docker.assert_called_once_with(['docker', 'info', '--format', '{{.OSType}}/{{.Architecture}}'],
+                                               capture_output=True, text=True)
+                network.assert_not_called()
+                publication.assert_not_called()
+                build.assert_not_called()
+
+    def test_publisher_rejects_every_other_repository_before_any_work(self):
+        spec=importlib.util.spec_from_file_location('publisher',ROOT/'scripts/publish-shared-images.py')
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        rejected = ('', 'opensoft/workbenches', 'opensoft/openbenches', 'other/workBenches',
+                    'opensoft/other', 'opensoft/workBenches ', ' opensoft/openBenches',
+                    'opensoft/openBenches/extra')
+        platform = subprocess.CompletedProcess([], 0, stdout='linux/x86_64\n')
+        for repository in rejected:
+            with self.subTest(repository=repository), patch.dict(os.environ, {'GITHUB_REPOSITORY':repository}), \
+                 patch.object(module, 'run', return_value=platform) as docker, \
+                 patch.object(module.urllib.request, 'urlopen') as network, \
+                 patch.object(module, 'github') as publication, patch.object(module, 'prepare_image') as build:
+                with self.assertRaisesRegex(RuntimeError, 'Publication is restricted'):
+                    module.main()
+                docker.assert_not_called()
+                network.assert_not_called()
+                publication.assert_not_called()
+                build.assert_not_called()
 
     def test_publisher_retries_reuse_matching_public_images_without_building(self):
         spec=importlib.util.spec_from_file_location('publisher',ROOT/'scripts/publish-shared-images.py')

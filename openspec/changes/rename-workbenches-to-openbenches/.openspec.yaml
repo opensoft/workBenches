@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-10-24
+goal: Preserve existing workstations, credentials, releases, and dependent
+  consumers while making openBenches the canonical product and repository
+  identity.

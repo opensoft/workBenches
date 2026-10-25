@@ -68,6 +68,38 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(result.stdout, 'workBenches v1.5.0\n')
         self.assertFalse((self.root / 'logs').exists())
 
+    def test_supported_legacy_entrypoints_read_historical_locks(self):
+        shutil.copy(ROOT / 'setup.sh', self.root / 'setup.sh')
+        (self.root / 'scripts').mkdir()
+        shutil.copy(ROOT / 'scripts/release-workbenches.py', self.root / 'scripts/release-workbenches.py')
+        release_tests = json.loads((ROOT / 'config/release-tests.json').read_text())
+        supported = release_tests['supportedReleaseLines']
+        self.assertTrue({'1.5', '1.6', '1.7'}.issubset(supported), supported)
+        current = (ROOT / 'VERSION').read_text().strip()
+        versions = list(dict.fromkeys([line + '.0' for line in supported] + [current]))
+        for product in versions:
+            with self.subTest(product=product):
+                (self.root / 'VERSION').write_text(product + '\n')
+                lock = {'schemaVersion': 1, 'version': product, 'repositories': [
+                    {'path': self.path, 'url': self.remote.as_uri(), 'commit': self.pin}]}
+                (self.root / 'config/release-lock.json').write_text(json.dumps(lock, indent=2) + '\n')
+                self.commit(self.root)
+                tag = 'v' + product
+                self.git(self.root, 'tag', '-a', tag, '-m', 'workBenches ' + product)
+                result = subprocess.run(['/bin/bash', str(self.root / 'setup.sh'), '--version'],
+                                        env=self.env, capture_output=True, text=True, timeout=3)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, f'workBenches v{product}\n')
+                result = subprocess.run(['python3', str(self.root / 'scripts/release-workbenches.py'),
+                                         'check', '--tag', tag], cwd=self.root, env=self.env,
+                                        capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, f'Release v{product} source lock verified\n')
+                result = subprocess.run(['/bin/bash', '-c',
+                    'source "$1/bootstrap.sh"; workbenches_release_checkout',
+                    'release-detection', str(self.root)], env=self.env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_freeze_and_annotated_tag_identify_clean_candidate(self):
         manifest = self.freeze()
         self.assertEqual(manifest['version'], '1.5.0')
