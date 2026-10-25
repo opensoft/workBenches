@@ -33,3 +33,25 @@ has a separate 8 MiB read/write limit, checked before replacement. A compact
 2,000-profile source can be re-imported after its pretty local copy exceeds
 the remote-input bound. Subprocess audit comments were reviewed against fixed
 argv construction, validated inputs and a literal-shell-syntax regression.
+
+## PR acceptance — 2026-10-25
+
+[PR #230](https://github.com/opensoft/workBenches/pull/230), stacked on #215,
+implements the bounded Tools connector. Final implementation head
+`922ab07701f30bd402e2a8be4b40ad5024eda50c` passed:
+
+- [Workstation Setup](https://github.com/opensoft/workBenches/actions/runs/40228335252):
+  regression, actual Tools/runtime OAuth boundary, credential images and lifecycle.
+- [Release fixtures](https://github.com/opensoft/workBenches/actions/runs/40228335256):
+  source, setup, launchers, estate and CI-mode evidence gate.
+- [Broker/client/CPC](https://github.com/opensoft/workBenches/actions/runs/40228335183).
+- Exact-head Codex review completed with no further findings; the credential-home,
+  case-insensitive alias and aggregate-size findings are fixed and their review
+  threads resolved. Subprocess audit threads have explicit boundary analysis and
+  a literal-argument regression; no unresolved review thread remains.
+
+This documentation-only acceptance commit changes no runtime. All four tasks are
+complete. No stable release or user Tools/Vault replacement was performed.
+Google OAuth app configuration and attended successful Microsoft/Google consent,
+file pull and launch qualification remain deployment prerequisites; synthetic
+denial and local launcher tests are not live provider acceptance.
