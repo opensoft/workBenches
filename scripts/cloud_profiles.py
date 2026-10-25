@@ -142,6 +142,8 @@ def home_key(value):
 
 def merge_profiles(existing, incoming, provider):
     """Reserve credential directories independently of user-visible profile names."""
+    if not isinstance(existing, list) or any(not isinstance(row, dict) or any(not isinstance(row.get(key), str) for key in ('name', 'email', 'family')) for row in existing):
+        raise ValueError('Existing profile metadata is invalid; repair it before import.')
     merged = list(existing); actual = []; names = {}; homes = set()
     # Launcher setup creates these family directories before its legacy-home
     # migration loop. A same-named new profile would trigger a recursive copy.
@@ -211,6 +213,8 @@ def connect(scope, backend, label):
     try:
         if app: private_json(destination / 'app.json', app)
         tools = os.environ.get('WORKBENCHES_TOOLS_CONTAINER', 'workbenches-tools')
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', tools):
+            raise ValueError('Invalid Tools container name.')
         image = bounded(['docker', 'inspect', tools, '--format', '{{.Image}}'], limit=256, timeout=15).decode().strip()
         if not re.fullmatch(r'sha256:[a-f0-9]{64}', image): raise ValueError('Start the updated Tools container first.')
         args = ['docker', 'run', '--rm', '--interactive', '--name', name,

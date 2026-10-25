@@ -289,6 +289,13 @@ class CloudTests(unittest.TestCase):
         self.assertEqual(preview[0]['name'], 'personal-2')
         self.assertEqual(preview[0]['profilePath'], 'personal/personal-2')
 
+    def test_dynamic_command_arguments_remain_literal_without_a_shell(self):
+        marker = self.root / 'must-not-exist'
+        value = '$(touch ' + str(marker) + '); echo private-canary'
+        result = cloud.bounded([sys.executable, '-c', 'import sys; print(sys.argv[1])', value])
+        self.assertEqual(result.decode().strip(), value)
+        self.assertFalse(marker.exists())
+
     def test_existing_duplicate_or_escaping_homes_fail_without_writes(self):
         for homes in (('personal/account', 'personal/account'), ('../escape', 'other')):
             with self.subTest(homes=homes):
