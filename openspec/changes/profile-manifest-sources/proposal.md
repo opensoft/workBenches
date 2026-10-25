@@ -1,0 +1,32 @@
+# Personal/company manifest sources and remembered browser connections
+
+Authority: Brett Heap, 2026-10-25. For v1.6.2, workstation access means the
+local workstation only. Personal and company profiles may import manifests from
+files or GitHub repositories, with browser-only authentication for private remote
+sources. Workstation-to-workstation communication moves to v1.8 through a service
+shipped with workBenches. This is approved scope, not implemented functionality.
+
+File sources include local JSON and hosted file links, including the OneDrive
+and Google Drive examples in the preceding discussion. Local files use OS access;
+private remote files require the source provider's browser authorization.
+
+Preserve each source's personal/company association, stable source locator and
+verified connection reference so a later visit can check access and re-import
+updates. Retain provider sessions in supported protected local storage; never
+store passwords/tokens in manifests, source URLs or exported identity metadata.
+Company Keycloak login is separate from authorization to GitHub/Drive or a vault.
+
+The existing GitHub account library is a building block. Its isolated connection
+must actually be used for repository reads; ambient native GitHub login is not
+equivalent. Microsoft/Google file authorization and retrieval need new adapters.
+Do not make Keycloak or a network service a prerequisite for local imports.
+
+This scope extends company-set import tracked by #227. Create a dedicated linked
+Speckit implementation feature before runtime changes; its tasks.md will own the
+only executable checklist. Do not reopen completed feature 033 wizard tasks or
+claim provider qualification from those tests. No release publication is implied.
+
+Clarification pending: whether "update it" includes editing/publishing the remote
+manifest, in addition to re-importing source changes. Remote write permissions
+and publishing remain undesigned until answered; read/import requirements below
+are independent of that decision.

@@ -68,6 +68,47 @@ workbenches_install_docker() {
     esac
 }
 
+# Ask the desktop to close its session normally. Killing a logind session can
+# kill the display manager's session helper before it can restore the greeter.
+workbenches_docker_logout() {
+    [[ -z "${SSH_CONNECTION:-}" && -z "${SSH_TTY:-}" ]] || return 1
+    workbenches_is_wsl && return 1
+    if [[ -n "${OMARCHY_PATH:-}" && -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]] &&
+       command -v omarchy >/dev/null 2>&1; then
+        omarchy system logout
+    elif [[ -n "${WAYLAND_DISPLAY:-}" ]] && command -v uwsm >/dev/null 2>&1 &&
+         uwsm check is-active >/dev/null 2>&1; then
+        uwsm stop
+    else
+        return 1
+    fi
+}
+
+workbenches_docker_relogin() {
+    local choice
+    echo 'Sign out and back in to activate group access, then rerun ./setup.sh.'
+    echo 'Your current shell still has its old groups. You must sign out, sign back in and open a new terminal for the change to take effect.'
+    echo 'Save your work first: signing out closes applications in this login session.'
+    while true; do
+        if ! read -r -p 'Sign out now so you can sign back in? [y/N] (Q to quit): ' choice; then return 130; fi
+        case "$choice" in
+            y|Y|yes|YES|Yes)
+                if workbenches_docker_logout; then
+                    # Do not resume setup if desktop logout is asynchronous.
+                    return 130
+                fi
+                echo 'Automatic sign-out is unavailable or failed. Sign out manually, then sign back in and rerun ./setup.sh.'
+                # Leave fallback instructions visible before the TUI redraws.
+                while true; do
+                    if ! read -r -p 'Press Enter to return to setup (Q to quit): ' choice; then return 130; fi
+                    case "$choice" in '') return 1 ;; q|Q) return 130 ;; esac
+                done ;;
+            n|N|no|NO|No|'') return 1 ;;
+            q|Q) return 130 ;;
+        esac
+    done
+}
+
 ensure_docker() {
     local choice status endpoint selected_action="${1:-}"
     if ! command -v docker >/dev/null 2>&1; then
@@ -156,8 +197,8 @@ ensure_docker() {
         case "$choice" in
             y|Y|yes|YES|Yes)
                 sudo usermod -aG docker "$(id -un)" || return "$?"
-                echo 'Sign out and back in to activate group access, then rerun ./setup.sh.'
-                return 1 ;;
+                workbenches_docker_relogin
+                return "$?" ;;
             q|Q) return 130 ;;
         esac
     fi

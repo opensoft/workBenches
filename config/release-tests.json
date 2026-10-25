@@ -49,6 +49,13 @@
           ]
         },
         {
+          "id": "setup-progress",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-setup-progress.py"
+          ]
+        },
+        {
           "id": "setup-services",
           "argv": [
             "python3",
@@ -60,6 +67,13 @@
           "argv": [
             "python3",
             "devcontainer.test/test-workbenches-account.py"
+          ]
+        },
+        {
+          "id": "company-connection",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-company-connection.py"
           ]
         },
         {

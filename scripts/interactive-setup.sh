@@ -1160,6 +1160,29 @@ draw_ui() {
     setup_ui_painted=true
 }
 
+# Partial redraws can leave the cursor anywhere in the frame. Resume normal
+# terminal output below the whole menu, including its navigation instructions.
+leave_setup_ui() {
+    stop_status_loader
+    if [[ "$setup_ui_painted" == true && ${#setup_ui_previous_lines[@]} -gt 0 ]]; then
+        printf '\033[%d;1H\033[0m%b\n\n' "${#setup_ui_previous_lines[@]}" "$SHOW_CURSOR"
+    else
+        printf '%b' "$SHOW_CURSOR"
+    fi
+    setup_ui_painted=false
+}
+
+start_selected_progress() {
+    local item total=0
+    for item in "${!component_checked[@]}"; do
+        if [[ "${component_checked[$item]}" == true && -n "${component_action[$item]}" ]]; then
+            total=$((total + 1))
+        fi
+    done
+    setup_progress_start "$total"
+    setup_progress_stage 'Preparing selected tools'
+}
+
 # Keep action hints together and show detail only for the focused component.
 draw_setup_footer() {
     if [[ "$CURRENT_SECTION" == 4 ]]; then
@@ -1803,8 +1826,8 @@ check_dir_safe_to_replace() {
 # Process selected items
 process_selections() {
     log "Processing selections - applying configuration changes"
+    setup_progress_stage 'Applying selected changes'
     echo -e "${SHOW_CURSOR}"
-    clear
 
     echo -e "${BOLD}${BLUE}════════════════════════════════════════════════════════════════════════════${NC}"
     echo -e "${BOLD}${BLUE}  Applying Configuration Changes${NC}"
@@ -1824,6 +1847,7 @@ process_selections() {
         if [[ "${component_checked[$key]}" == true && -n "${component_action[$key]}" ]]; then
             active_component="$key"
             local action="${component_action[$key]}"
+            setup_progress_component "$bench: $action" "$success_count" "$fail_count"
             local status="${component_status[$key]}"
             if [[ "$status" == 'needs check' || "$status" == 'needs docker' ]]; then
                 any_selected=true
@@ -2223,6 +2247,7 @@ process_selections() {
             active_component="$item"
             local desc="${component_description[$item]}"
             local action="${component_action[$item]}"
+            setup_progress_component "$desc: $action" "$success_count" "$fail_count"
 
             # Handle uninstallation
             if [[ "$action" == "uninstall" ]]; then
@@ -2510,6 +2535,7 @@ process_selections() {
             [[ "$status" == "installed" || "$status" == "needs creds" ]] && is_installed=true
 
             if [[ "$item" == ai_accounts ]]; then continue; fi
+            setup_progress_component "$desc: $action" "$success_count" "$fail_count"
             if [[ "$item" == host_shell || "$item" == workspace_repo ]]; then
                 local optional_status=0
                 if [[ "$item" == host_shell ]]; then
@@ -2659,6 +2685,7 @@ process_selections() {
 
     # Verify selected applications against fresh installation evidence. A
     # successful installer exit alone must never report a missing tool as ready.
+    setup_progress_component 'Verifying installed components' "$success_count" "$fail_count"
     refresh_component_statuses
     local verified_item final_status
     for verified_item in "${!component_action[@]}"; do
@@ -2681,6 +2708,7 @@ process_selections() {
     if [[ "${component_checked[ai_accounts]}" == true ]]; then
         any_selected=true
         active_component=ai_accounts
+        setup_progress_component 'AI account setup' "$success_count" "$fail_count"
         if [[ "$fail_count" -gt 0 ]]; then
             echo "AI accounts skipped because a selected change failed. Retry account setup after resolving it."
         elif configure_selected_accounts; then
@@ -2697,6 +2725,7 @@ process_selections() {
 
     if [[ "${component_checked[workbenches_account]}" == true ]]; then
         any_selected=true
+        setup_progress_component 'Company account setup' "$success_count" "$fail_count"
         if python3 "$SCRIPT_DIR/setup-workbenches-account.py"; then
             if [[ "$(python3 "$SCRIPT_DIR/setup-workbenches-account.py" --status)" == 'signed in' ]]; then ((success_count++)); fi
         else
@@ -2708,6 +2737,7 @@ process_selections() {
     fi
 
     # Summary
+    setup_progress_component 'Selected changes checked; summary below' "$success_count" "$fail_count"
     echo ""
     echo -e "${BOLD}${BLUE}────────────────────────────────────────────────────────────────────────────${NC}"
 
@@ -3285,6 +3315,7 @@ load_selection() {
 # Main function
 main() {
     log "Main function started"
+    trap 'setup_progress_finish "$?"; stop_status_loader; printf "%b" "$SHOW_CURSOR"' EXIT
     local mode=interactive selection_file=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -3302,7 +3333,6 @@ main() {
         status_checks_running=true
         # Draw before Docker, tool activation, jq, or Python can run.
         draw_ui
-        trap 'stop_status_loader; printf "%b" "$SHOW_CURSOR"' EXIT
         start_status_loader
     else
         ensure_workstation_requirements || return "$?"
@@ -3311,6 +3341,7 @@ main() {
     fi
     if [[ "$mode" == --apply-plan || "$mode" == --dependencies-plan ]]; then
         load_selection
+        start_selected_progress
         if [[ "$mode" == --apply-plan ]] && workbenches_release_checkout; then
             export WORKBENCHES_FROZEN=1
             python3 "$SCRIPT_DIR/release-workbenches.py" prepare --selection "$selection_file" || return "$?"
@@ -3351,9 +3382,11 @@ main() {
         if [ $result -eq 1 ]; then
             # Enter pressed - process selections
             log "User pressed Enter - processing selections"
+            leave_setup_ui
             if [[ "$mode" == --select-only ]]; then
                 save_selection || exit "$?"
             else
+                start_selected_progress
                 ensure_selected_dependencies
                 process_selections || return "$?"
             fi

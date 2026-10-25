@@ -10,7 +10,7 @@ mkdir -p "$fixture/scripts/lib" "$fixture/config" "$fixture/devBenches/testBench
     "$fixture/sysBenches/testBench" "$test_root/bin" "$test_root/home/.config/workbenches"
 cp "$repo_root/setup.sh" "$fixture/"
 cp "$repo_root/bootstrap.sh" "$fixture/"
-cp "$repo_root/scripts/lib/"{docker-prerequisite.sh,tools-container.sh,setup-status-loader.sh,setup-prerequisites.sh,setup-prompts.sh} "$fixture/scripts/lib/"
+cp "$repo_root/scripts/lib/"{docker-prerequisite.sh,tools-container.sh,setup-status-loader.sh,setup-prerequisites.sh,setup-prompts.sh,setup-progress.sh} "$fixture/scripts/lib/"
 cp "$repo_root/scripts/setup_selection.py" "$fixture/scripts/"
 cp "$repo_root/scripts/setup-bench-home.py" "$fixture/scripts/"
 cp "$repo_root/scripts/shared-images.py" "$fixture/scripts/"

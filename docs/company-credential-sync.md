@@ -1,4 +1,15 @@
-# Company credential synchronization — v1.6 development
+# Company credential synchronization — future openProfiler integration
+
+Release scope decision (2026-10-24): broker deployment, synchronization,
+provider adapter qualification and CPC maintenance are deferred from v1.6.2.
+The follow-up ownership decision moves this capability to openProfiler, with
+pinned workBenches integration in v1.7 or v1.8 after qualification; see
+[openProfiler #30](https://github.com/opensoft/openProfiler/issues/30) and
+[workBenches #229](https://github.com/opensoft/workBenches/issues/229).
+The [v1.6.2 credential recovery route](release-1.6.2.md#credential-recovery-scope)
+uses direct Azure Key Vault recovery with Azure device-code sign-in instead.
+The broker implementation documented below already exists and remains opt-in;
+it is not needed for that direct recovery route.
 
 Implemented on `feature/profile-onboarding`; not deployed or certified for real
 Claude/Codex/OpenCode subscription sessions. All example profiles are disabled.

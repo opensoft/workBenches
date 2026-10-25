@@ -12,8 +12,7 @@ The owner of an identity determines its source repository:
 | Identity | Source of truth |
 |---|---|
 | Product-required logical role | Product credential-contract repository |
-| Opensoft-owned account | `opensoft/Opensoft-Tenant` |
-| FarHeap-owned account | `FarHeap/FarHeap-Tenant` |
+| Company-owned AI account (future target) | Company-controlled dedicated private AI profile repository |
 | Engineer-owned personal account | `<engineer>/AI-Credentials` |
 | Personal agent definition or stack | `<engineer>/Agents` |
 | Local OAuth session | Workstation or approved runtime only |
@@ -22,6 +21,79 @@ Product repositories declare credential requirements and bindings, not tenant
 secret values. Tenant repositories bind their own accounts to product roles.
 User repositories import authorized tenant profiles and add personal profiles.
 Agent-stack repositories reference credential IDs but do not copy credentials.
+
+## Profiles product ownership and workBenches integration
+
+Follow-up decision from Brett, 2026-10-24: complete the capability in the existing
+[openProfiler](https://github.com/opensoft/openProfiler) product, called
+"openProfiles" in discussion. workBenches will consume a tested pinned release
+in v1.7 or v1.8 after qualification. openProfiler owns reusable catalogs,
+manifest composition, provider stores, broker retrieval and lifecycle management.
+workBenches owns setup and orchestration through a versioned headless contract,
+with immutable release pins and verified artifacts. Preserve isolated launcher
+behavior; activation into a default home alone is not a substitute.
+
+Track upstream completion in [openProfiler #30](https://github.com/opensoft/openProfiler/issues/30)
+and integration in [workBenches #229](https://github.com/opensoft/workBenches/issues/229).
+This is a direction and migration plan, not an implemented extraction.
+
+Version boundary refined by Brett on 2026-10-25: workstation access in v1.6.2
+is local only. File/repository manifest imports for personal/company scopes must
+remember explicitly linked browser-authorized sources; the expanded workflow
+remains to be implemented. A service shipped with workBenches for workstations
+to communicate is targeted specifically for v1.8. This peer-service boundary
+does not require a remote service or Keycloak for v1.6.2 imports. See the
+[manifest-source proposal](../openspec/changes/profile-manifest-sources/proposal.md).
+
+The target company deployment includes a separately deployable broker service
+container connected to the company's existing vault. The current openProfiler
+installer does not provide this company deployment. The workBenches Vault
+container is a client toolbox for contacting credential stores, not a vault
+server. Keep the authoritative company catalog in its private repository and
+generate only the engineer's authorized launcher manifests on the workstation.
+Initially preserve the compatible local paths
+`~/.config/workbenches/claude-profiles.json` and `openai-profiles.json`;
+provider credentials remain in their separate private profile stores.
+
+## Company repository and broker onboarding target
+
+Scope decision from Brett, 2026-10-24: company AI profile sets belong in a
+dedicated private repository controlled by that company, rather than in
+`opensoft/Opensoft-Tenant`. The latter is the currently observed Opensoft catalog
+location, not the target storage contract. Every company chooses its own
+repository and controls access for its engineers; workBenches must not assume
+an Opensoft organization, repository name or shared central account catalog.
+Migration of existing catalogs is future work and must be reviewed before any
+source is moved or deleted.
+
+The company repository owns profile metadata (names, provider login emails,
+account IDs), credential references and administrator-controlled grants or
+policy. Credential values remain in that company's vault. Company configuration
+associates its repository and broker endpoint with its workBenches profile.
+Repository administration and vault/broker administration remain company-owned.
+
+An engineer links a verified GitHub account to a company in workBenches. Linking
+is a local association, not proof of company membership or a credential grant.
+After company/broker authentication and verified identity mapping, the broker
+uses company policy to return only profiles that engineer may use. Setup reviews
+the authorized set, generates local launcher manifests and retrieves approved
+credentials through the broker into isolated private provider stores. Engineers
+do not need direct vault access for this future path. Personal profiles and other
+companies remain independent.
+
+The current composer can read an entire cloned catalog before applying local
+grant filtering. That filtering does not hide catalog metadata from someone
+with repository read access. If company policy restricts which account metadata
+an engineer can see, have the broker read the private source and expose only
+authorized entries; do not distribute the full catalog to that engineer.
+Repository visibility is a separate boundary from per-profile broker grants.
+The existing optional broker GitHub-team checks are a building block, not proof
+that this integrated onboarding and storage migration are implemented.
+
+Acceptance must cover two independent companies, multiple linked GitHub
+accounts, unauthorized users, revoked access, partial recovery, reruns and
+migration without changing canonical profile IDs or breaking existing stores.
+The v1.6.2 direct device-login recovery path remains separately scoped.
 
 ## Source layout
 

@@ -208,27 +208,30 @@ def main():
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument('--status', action='store_true')
     modes.add_argument('--logout', action='store_true')
+    modes.add_argument('--configure', action='store_true', help='Review company connection setup without signing in')
     args = parser.parse_args()
     if args.logout:
         return logout()
     if args.status:
         print(status())
         return 0
-    config = configuration()
-    if config is None:
-        print('Optional workBenches account: your organization must provide its Keycloak realm URL and public client ID.')
-        issuer = prompt('Realm HTTPS URL (Enter skips, Q cancels): ')
-        if not issuer:
+    config = None if args.configure else configuration()
+    if config is None or args.configure:
+        from company_connection import connect
+        try:
+            import workbenches_host as native
+        except ImportError:
+            if os.environ.get('WORKBENCHES_HOST_RPC'):
+                raise
+            native = None
+        config = connect(CONFIG.parent, request, write_private,
+                         company=os.environ.get('WORKBENCHES_ACCOUNT_COMPANY', 'Company'), host=native)
+        if config is None:
             print('Account setup skipped. Bench installation does not require an account.')
             return 0
-        client = prompt('Public client ID (Enter skips, Q cancels): ')
-        if not client:
-            print('Account setup skipped.')
+        if args.configure:
+            print('Company connection settings saved. Sign in to verify the application registration.')
             return 0
-        config = {'issuer': url(issuer.rstrip('/')), 'clientId': client}
-        if urllib.parse.urlsplit(config['issuer']).query:
-            raise ValueError('Realm URL must not contain a query.')
-        write_private(CONFIG, config)
     return login(config)
 
 

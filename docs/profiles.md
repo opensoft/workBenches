@@ -1,13 +1,36 @@
-# Profiles (v1.6 development)
+# Profiles (v1.6.x)
 
-This feature is on `feature/profile-onboarding`, outside the v1.5 release.
+The Profiles manager ships in v1.6.x. Planned v1.6.2 additions are labeled below;
+an approved scope decision is not a claim that its implementation is complete.
 
-The broader [v1.6 plan](release-1.6.0.md) also targets broker-controlled company
-credential publication/synchronization and a scheduled CPC maintenance worker.
-Broker/client/CPC code and company synchronization controls are implemented on
-this branch, with real deployment/provider QA pending. See the
+For [v1.6.2](release-1.6.2.md), retrieve mapped Claude/Codex credentials directly
+from Azure Key Vault using Azure device-code sign-in. This requires configured
+AI profiles, a private vault mapping and the user's Azure secret-read permissions;
+company IdP registration and a broker are not required for this route.
+
+Broker deployment, company credential synchronization, provider qualification
+and CPC maintenance move to openProfiler, consumed as a pinned workBenches
+release in v1.7 or v1.8 after qualification. Broker/client/CPC code and company
+synchronization controls already exist but remain opt-in, with real
+deployment/provider QA pending. See the
 [synchronization guide](company-credential-sync.md) and
 [specification](../specs/027-company-credential-sync/spec.md).
+
+## Manifest-source scope decision (2026-10-25)
+
+For v1.6.2, "workstation" means this local computer. Personal and company scopes
+are to retain their manifest source (local/hosted file or GitHub repository) and
+an explicitly linked browser-authenticated connection for later access/refresh.
+Local JSON imports use filesystem access; private remote files/repositories use
+the provider's browser authorization. OneDrive/Google Drive need file connectors;
+company Keycloak sign-in alone does not grant those providers' permissions.
+These expanded source/refresh requirements are planned, not delivered by the
+current wizard. See the [proposal](../openspec/changes/profile-manifest-sources/proposal.md)
+for implemented foundations, missing integration and pending remote-write scope.
+Peer-workstation communication through a workBenches service is targeted for
+v1.8. Imported manifest metadata and provider credentials remain separate.
+
+## Profiles manager
 
 Setup has three pages. Components selects software; Requirements manages Docker,
 Tools, and Vault readiness; **Profiles** manages personal and company identities.
@@ -97,8 +120,14 @@ An administrator can supply a local JSON file or HTTPS URL with this content:
 ```
 
 Choose **I Import enrollment** and review the displayed realm and public client
-before saving. Redirects are refused; use the final trusted URL. Alternatively,
-**C Company sign-in** prompts for the realm and client if none is configured.
+before saving. Redirects are refused; use the final trusted URL.
+**C Company sign-in** for an unconfigured company now opens a
+guided connection menu: import administrator setup, follow registration guidance,
+or enter an existing application's settings. Client ID identifies that registered
+application, not the user/company ID. Already-configured sign-in is unchanged.
+**R Connection setup** repairs a company's settings without starting sign-in.
+See [Connect a company](company-connection.md) for the public-client/device-flow
+settings, native browser actions and reusable non-secret enrollment export.
 Passwords and MFA stay in the browser. Each company's local session is separate.
 After successful company sign-in, setup offers to add the email confirmed as
 verified by the sign-in server as a company identity. It does not
