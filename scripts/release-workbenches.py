@@ -137,10 +137,24 @@ def prepare(root, selection):
         if not (checkout / '.git').exists():
             checkout.parent.mkdir(parents=True, exist_ok=True)
             # Share SSH preference/HTTPS fallback, then detach at the frozen SHA.
-            subprocess.run(['bash', str(root / 'bootstrap.sh'), '--clone', entry['url'],
-                            str(checkout), '--no-checkout'], check=True)
+            try:
+                subprocess.run(['bash', str(root / 'bootstrap.sh'), '--clone', entry['url'],
+                                str(checkout), '--no-checkout'], check=True)
+            except subprocess.CalledProcessError as error:
+                if error.returncode in (130, 143):
+                    raise SystemExit(error.returncode) from None
+                raise ValueError(f'Could not clone {entry["url"]} for {path}; '
+                                 'resolve the repository access or network error above, then retry setup.') from None
             git(checkout, 'checkout', '--detach', entry['commit'])
+        # A previous attempt may have cloned and pinned the bench before a
+        # private submodule needed authentication. Finish that step on retry.
+        try:
             subprocess.run(['bash', str(root / 'bootstrap.sh'), '--submodules', str(checkout)], check=True)
+        except subprocess.CalledProcessError as error:
+            if error.returncode in (130, 143):
+                raise SystemExit(error.returncode) from None
+            raise ValueError(f'Could not initialize submodules for {path}; '
+                             'resolve the repository access or network error above, then retry setup.') from None
         if checkout_identity(checkout) != entry['commit']:
             raise ValueError(f'Frozen source verification failed: {path}')
         print(f'Frozen source: {path} @ {entry["commit"][:12]}')

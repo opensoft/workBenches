@@ -26,7 +26,7 @@ class GitTransportTests(unittest.TestCase):
                     "TEST_LOG": str(self.log)}
         git = self.bin / "git"
         git.write_text(f"#!{sys.executable}\n" + '''
-import json, os, pathlib, sys
+import json, os, pathlib, subprocess, sys
 args = sys.argv[1:]
 config_args = []
 while args[:1] == ["-c"]:
@@ -40,6 +40,13 @@ if args[:1] == ["clone"]:
     if url.startswith("git@github.com:") and os.environ.get("TEST_SSH_CLONE_STATUS"):
         sys.exit(int(os.environ["TEST_SSH_CLONE_STATUS"]))
     if url.startswith("https://github.com/") and os.environ.get("TEST_HTTPS_FAIL"): sys.exit(128)
+    if url.startswith("https://github.com/") and os.environ.get("TEST_REQUIRE_GH_HELPER"):
+        if "credential.https://github.com.helper=!gh auth git-credential" not in config_args:
+            sys.exit(128)
+        credential = subprocess.run(["gh", "auth", "git-credential", "get"],
+            input="protocol=https\\nhost=github.com\\n\\n", capture_output=True, text=True)
+        if credential.returncode or "password=fixture-private-token" not in credential.stdout:
+            sys.exit(128)
     path = pathlib.Path(dest)
     if path.exists() and any(path.iterdir()): sys.exit(128)
     path.mkdir(parents=True, exist_ok=True)
@@ -50,6 +57,7 @@ if "--get-regexp" in args:
     print("submodule.sysBenches.cloudBench.url https://github.com/opensoft/cloudBench.git")
     sys.exit(0)
 if "submodule" in args:
+    if os.environ.get("TEST_SUBMODULE_ALWAYS_FAIL"): sys.exit(128)
     if os.environ.get("TEST_SUBMODULE_FAIL") and not any("insteadOf" in arg for arg in config_args): sys.exit(1)
     sys.exit(0)
 sys.exit(2)
@@ -119,8 +127,106 @@ sys.exit(2)
 
     def test_private_https_failure_is_reported(self):
         self.env.update(TEST_PROBE_STATUS="128", TEST_HTTPS_FAIL="1")
+        result = self.clone()
+        self.assertEqual(result.returncode, 128)
+        self.assertIn('gh auth login --hostname github.com', result.stderr)
+        self.assertIn('repository access', result.stderr)
+        self.assertFalse(self.dest.exists())
+
+    def fake_gh(self):
+        executable = self.bin / 'gh'
+        executable.write_text('''#!/bin/bash
+[[ "$*" == 'auth git-credential get' ]] || exit 2
+cat >/dev/null
+[[ "${TEST_GH_DENIED:-}" != 1 ]] || exit 1
+printf 'username=fixture-account\\npassword=fixture-private-token\\n'
+''')
+        executable.chmod(0o755)
+
+    def test_private_https_clone_uses_path_resolved_gh_fallback(self):
+        self.fake_gh()
+        self.env.update(TEST_PROBE_STATUS='128', TEST_REQUIRE_GH_HELPER='1')
+        result = self.clone('https://github.com/opensoft/cloudBench.git', '--no-checkout')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('--no-checkout', self.clones[0]['args'])
+        self.assertIn('credential.https://github.com.helper=!gh auth git-credential', self.clones[0]['config'])
+        self.assertNotIn('credential.https://github.com.helper=', self.clones[0]['config'])
+        self.assertFalse(any('--global' in call['args'] for call in self.calls))
+
+    def test_private_clone_retries_after_authentication_is_available(self):
+        # gh may already be installed (as on hosted CI). Model missing
+        # authentication explicitly, rather than depending on its absence.
+        self.fake_gh()
+        self.env.update(TEST_PROBE_STATUS='128', TEST_REQUIRE_GH_HELPER='1', TEST_GH_DENIED='1')
         self.assertEqual(self.clone().returncode, 128)
         self.assertFalse(self.dest.exists())
+        self.env.pop('TEST_GH_DENIED')
+        self.assertEqual(self.clone().returncode, 0)
+
+    def test_real_git_uses_native_gh_after_broken_absolute_helper(self):
+        self.fake_gh()
+        configuration = self.root / 'gitconfig'
+        configuration.write_text('[credential "https://github.com"]\n\thelper = !/nonexistent/workstation/gh auth git-credential\n')
+        original = configuration.read_bytes()
+        # Keep real Git but resolve gh from the fixture PATH, like the Tools
+        # bridge. No server, real account, keyring or credential file is used.
+        (self.bin / 'git').unlink()
+        env = dict(self.env, GIT_CONFIG_GLOBAL=str(configuration),
+                   GIT_CONFIG_SYSTEM='/dev/null', GIT_TERMINAL_PROMPT='0')
+        result = subprocess.run(['bash', '-c',
+            'source "$1"; workbenches_github_git credential fill', 'fixture', str(BOOTSTRAP)],
+            env=env, cwd=self.root, input='protocol=https\nhost=github.com\n\n',
+            capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('password=fixture-private-token', result.stdout)
+        self.assertEqual(configuration.read_bytes(), original)
+        # A GitHub-specific fallback must not offer the token to other hosts.
+        other = subprocess.run(['bash', '-c',
+            'source "$1"; workbenches_github_git credential fill', 'fixture', str(BOOTSTRAP)],
+            env=env, cwd=self.root, input='protocol=https\nhost=git.example.org\n\n',
+            capture_output=True, text=True, timeout=10)
+        self.assertNotEqual(other.returncode, 0)
+        self.assertNotIn('fixture-private-token', other.stdout + other.stderr)
+        self.assertNotIn('fixture-private-token', result.stderr)
+
+        env['TEST_GH_DENIED'] = '1'
+        denied = subprocess.run(['bash', '-c',
+            'source "$1"; workbenches_github_git credential fill', 'fixture', str(BOOTSTRAP)],
+            env=env, cwd=self.root, input='protocol=https\nhost=github.com\n\n',
+            capture_output=True, text=True, timeout=10)
+        self.assertNotEqual(denied.returncode, 0)
+        self.assertNotIn('fixture-private-token', denied.stdout + denied.stderr)
+        self.assertEqual(configuration.read_bytes(), original)
+
+    def test_existing_credential_helper_remains_first(self):
+        self.fake_gh()
+        (self.bin / 'git').unlink()
+        configuration = self.root / 'gitconfig'
+        configuration.write_text('[credential "https://github.com"]\n'
+            '\thelper = "!f() { printf \\"username=existing-account\\\\npassword=existing-token\\\\n\\"; }; f"\n')
+        result = subprocess.run(['bash', '-c',
+            'source "$1"; workbenches_github_git credential fill', 'fixture', str(BOOTSTRAP)],
+            env=dict(self.env, GIT_CONFIG_GLOBAL=str(configuration), GIT_CONFIG_SYSTEM='/dev/null',
+                     GIT_TERMINAL_PROMPT='0'), cwd=self.root, input='protocol=https\nhost=github.com\n\n',
+            capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('username=existing-account', result.stdout)
+        self.assertNotIn('fixture-private-token', result.stdout + result.stderr)
+
+    def test_submodule_https_retry_has_native_gh_fallback(self):
+        self.fake_gh()
+        self.env['TEST_SUBMODULE_FAIL'] = '1'
+        result = self.run_bootstrap('--submodules', self.root)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        updates = [call for call in self.calls if 'submodule' in call['args']]
+        for call in updates:
+            self.assertIn('credential.https://github.com.helper=!gh auth git-credential', call['config'])
+
+    def test_denied_submodule_access_has_recovery_guidance(self):
+        self.env['TEST_SUBMODULE_ALWAYS_FAIL'] = '1'
+        result = self.run_bootstrap('--submodules', self.root)
+        self.assertEqual(result.returncode, 128)
+        self.assertIn('gh auth login --hostname github.com', result.stderr)
 
     def test_existing_destination_is_preserved(self):
         self.dest.mkdir()
