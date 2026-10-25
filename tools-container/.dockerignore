@@ -2,3 +2,5 @@
 !Dockerfile
 !workbenches_host.py
 !host-command
+!rclone_login.py
+!rclone-open

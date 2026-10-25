@@ -67,6 +67,17 @@ Workstation-to-workstation communication is deferred to v1.8 through a service
 shipped with workBenches, respecting openProfiler's reusable profile-management
 ownership. No peer service is required for v1.6.2 file/repository imports.
 
+## Tools cloud-file connector (development)
+
+Feature 160 adds digest-pinned Rclone 1.75.2 to Tools and **F Manifest files**
+under personal/company Profiles. Local or connected Google Drive/OneDrive
+provider manifests can be reviewed, merged and materialized as local launchers;
+saved sources support repeat pulls. Browser OAuth uses a temporary Tools-image
+login container and host-loopback callback, with private per-scope Rclone config.
+Google requires configured desktop OAuth app credentials. No actual provider
+consent/pull is certified by fixtures. Read the [connector guide](cloud-profile-import.md)
+for supported paths/file format and broader source-import work still outstanding.
+
 ## Guided company connection
 
 First-time company login now explains application registration and opens a
