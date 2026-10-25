@@ -49,6 +49,13 @@
           ]
         },
         {
+          "id": "setup-progress",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-setup-progress.py"
+          ]
+        },
+        {
           "id": "setup-services",
           "argv": [
             "python3",

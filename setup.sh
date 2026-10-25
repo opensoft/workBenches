@@ -127,7 +127,7 @@ fi
 ensure_setup_platform || exit "$?"
 if [[ ! -t 0 || ! -t 1 ]]; then ensure_workstation_requirements || exit "$?"; fi
 selection_file="$(mktemp "${TMPDIR:-/tmp}/workbenches-selection.XXXXXX")" || exit 1
-trap 'rm -f "$selection_file"' EXIT
+trap 'setup_progress_finish "$?"; rm -f "$selection_file"' EXIT
 "${SCRIPT_DIR}/scripts/interactive-setup.sh" --select-only "$selection_file" || exit "$?"
 # The child TUI owns startup checks; adopt its ready runtime for applying the plan.
 if [[ -t 0 && -t 1 ]]; then ensure_workstation_requirements || exit "$?"; fi
@@ -141,6 +141,12 @@ if python3 "$SCRIPT_DIR/scripts/setup_selection.py" empty "$selection_file"; the
     exit 0
 fi
 selected_bench_paths="$(python3 "$SCRIPT_DIR/scripts/setup_selection.py" benches "$selection_file")" || exit "$?"
+selected_count=0
+while IFS=$'\t' read -r selected_key selected_action; do
+    [[ -z "$selected_key" ]] || selected_count=$((selected_count + 1))
+done < <(python3 "$SCRIPT_DIR/scripts/setup_selection.py" rows "$selection_file")
+setup_progress_start "$selected_count"
+setup_progress_stage 'Checking prerequisites'
 if workbenches_release_checkout; then
     export WORKBENCHES_FROZEN=1
     printf 'Source mode: frozen v%s\n' "$(workbenches_version)" >> "$LOG_FILE"
@@ -195,6 +201,7 @@ except (OSError, ValueError, TypeError):
 sys.exit(0 if ready else 1)
 PROFILES
 then
+    setup_progress_stage 'Preparing AI profiles'
     # Reuse approved profile configuration without opening vaults or onboarding.
     echo "Reusing configured AI profiles."
     run_ai_profile_setup --apply-existing
@@ -206,6 +213,7 @@ persist_npm_user_path
 # scripts/setup-estate-commands.sh. Best-effort, like the other host-user
 # steps here: it never fails setup.sh. WORKBENCHES_SKIP_ESTATE_COMMANDS=1 skips it.
 if [[ -n "$selected_bench_paths" ]] && [ -x "${SCRIPT_DIR}/scripts/setup-estate-commands.sh" ]; then
+    setup_progress_stage 'Installing workspace commands'
     log_header "ESTATE COMMANDS"
     "${SCRIPT_DIR}/scripts/setup-estate-commands.sh" || echo "⚠ Estate command install skipped or failed; continuing workBenches setup."
     echo ""
@@ -225,10 +233,14 @@ fi
 
 # Wave Terminal widgets are host-user state. Install them before any image
 # builds so the desktop terminal shortcuts track the current checkout.
-if python3 "$SCRIPT_DIR/scripts/setup_selection.py" rows "$selection_file" | grep -q $'wave\tinstall'; then install_wave_terminal_widgets; fi
+if python3 "$SCRIPT_DIR/scripts/setup_selection.py" rows "$selection_file" | grep -q $'wave\tinstall'; then
+    setup_progress_stage 'Preparing Wave Terminal'
+    install_wave_terminal_widgets
+fi
 
 # Ensure Layer 0 base image exists
 log_header "LAYER 0 BUILD"
+setup_progress_stage 'Preparing shared images'
 if [[ -z "$selected_bench_paths" ]]; then
     echo "No bench images selected; skipping Layer 0."
 else
@@ -252,6 +264,7 @@ run_interactive_setup() {
 
 # Build the selected family layers before any bench setup consumes them.
 log_header "LAYER 1 BUILDS"
+setup_progress_stage 'Preparing bench images'
 BUILD_FAILED=false
 
 if command -v jq >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/config/bench-config.json" ]; then
@@ -268,18 +281,21 @@ if command -v jq >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/config/bench-config.json" 
     done <<< "$selected_bench_paths"
 
     if [ "$has_dev" = true ] && [ -x "$SCRIPT_DIR/devBenches/setup.sh" ]; then
+        setup_progress_stage 'Preparing bench images' 'Development benches'
         echo ""
         echo "Dev benches detected. Building Layer 1a base image..."
         "$SCRIPT_DIR/devBenches/setup.sh" --user "$USERNAME" || { echo "✗ Layer 1a (devBenches) build failed"; BUILD_FAILED=true; }
     fi
 
     if [ "$has_sys" = true ] && [ -x "$SCRIPT_DIR/sysBenches/setup.sh" ]; then
+        setup_progress_stage 'Preparing bench images' 'System benches'
         echo ""
         echo "Sys benches detected. Building Layer 1b base image..."
         "$SCRIPT_DIR/sysBenches/setup.sh" --user "$USERNAME" || { echo "✗ Layer 1b (sysBenches) build failed"; BUILD_FAILED=true; }
     fi
 
     if [ "$has_bio" = true ] && [ -x "$SCRIPT_DIR/bioBenches/setup.sh" ]; then
+        setup_progress_stage 'Preparing bench images' 'Bio benches'
         echo ""
         echo "Bio benches detected. Building Layer 1c base image..."
         "$SCRIPT_DIR/bioBenches/setup.sh" --user "$USERNAME" || { echo "✗ Layer 1c (bioBenches) build failed"; BUILD_FAILED=true; }
@@ -287,6 +303,7 @@ if command -v jq >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/config/bench-config.json" 
 fi
 
 if [ "$BUILD_FAILED" = false ]; then
+    setup_progress_stage 'Applying selected changes'
     log_header "INTERACTIVE SETUP"
     if run_interactive_setup; then
         :

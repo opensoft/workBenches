@@ -172,6 +172,57 @@ poll_status_loader
             result = subprocess.run(['bash', '-c', command, 'snapshot', temporary], capture_output=True, timeout=3)
             self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_enter_moves_output_below_navigation_after_a_partial_redraw(self):
+        for mode in ('interactive', '--select-only'):
+            with self.subTest(mode=mode):
+                command = f'''source "{ROOT}/scripts/interactive-setup.sh"
+ensure_setup_platform() {{ :; }}
+ensure_workstation_requirements() {{ :; }}
+init_components() {{ :; }}
+load_statuses() {{ :; }}
+poll_status_loader() {{ :; }}
+stop_status_loader() {{ loader_stopped=true; }}
+tput() {{ [[ "$1" != cols ]] || echo 88; }}
+render_setup_frame() {{ printf '%s\\nNavigation: Move and select\\nEnter Apply  Q Quit\\n' "$header"; }}
+header=Loading
+handle_input() {{ header=Ready; status_ui_dirty=true; return 1; }}
+get_checked_state() {{ :; }}
+save_selection() {{ [[ "$loader_stopped" == true ]] || exit 91; }}
+ensure_selected_dependencies() {{
+    [[ "$loader_stopped" == true ]] || exit 92
+    printf 'DEPENDENCY OUTPUT\\n'
+}}
+process_selections() {{ printf 'INSTALL OUTPUT\\n'; }}
+if [[ "$1" == interactive ]]; then main; else main --select-only unused; fi
+printf 'PARENT SETUP OUTPUT\\n'
+'''
+                result = subprocess.run(['bash', '-c', command, 'handoff', mode],
+                                        capture_output=True, timeout=3)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                output = result.stdout
+                # The last incremental paint touched only the top row. Handoff
+                # must still start after the third (navigation) row.
+                partial = b'\x1b[1;1H\x1b[0mReady\x1b[0m\x1b[K'
+                handoff = b'\x1b[3;1H\x1b[0m\x1b[?25h\n\n'
+                self.assertIn(partial + handoff, output)
+                after = output.split(handoff, 1)[1]
+                self.assertNotIn(b'\x1b[2J', after)
+                self.assertIn(b'PARENT SETUP OUTPUT', after)
+                if mode == 'interactive':
+                    self.assertTrue(after.startswith(b'DEPENDENCY OUTPUT\nINSTALL OUTPUT\n'))
+                else:
+                    self.assertNotIn(b'DEPENDENCY OUTPUT', after)
+
+    def test_leaving_ui_without_a_frame_does_not_reposition_the_cursor(self):
+        command = f'''source "{ROOT}/scripts/interactive-setup.sh"
+stop_status_loader() {{ :; }}
+leave_setup_ui
+printf 'OUTPUT\\n'
+'''
+        result = subprocess.run(['bash', '-c', command], capture_output=True, timeout=3)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, b'\x1b[?25hOUTPUT\n')
+
 
 if __name__ == '__main__':
     unittest.main()

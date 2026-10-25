@@ -46,9 +46,22 @@ readiness after changing settings. See [Docker's WSL integration guide](https://
 Linux setup can offer to start an installed local Docker service or add the
 current user to its Docker group. Group changes require signing out and back in;
 Docker group membership grants administrator-equivalent machine access.
+After adding the user, setup explains that the current shell keeps its old
+groups and asks whether to sign out now. Save your work before choosing Yes;
+sign-out closes applications in the current login session. Sign back in, open
+a new terminal and rerun setup to use the new group membership. No (the default)
+returns to setup without signing out; Q quits setup. If automatic sign-out is
+unavailable or fails, manual instructions remain visible until acknowledged.
+Omarchy uses its normal desktop logout command; other active UWSM sessions use
+`uwsm stop`. Setup never forcibly terminates a login-manager session.
 Remote and rootless context failures do not start the system Docker service.
 
 The main TUI has a **Requirements** page: press P, or move right from Tools.
+After Enter applies the selections, installation has a fixed progress panel at
+the top showing the current stage, component, completed actions and failures.
+Live build and installer output scrolls below it; prompts still accept input in
+that area. Ctrl+C cancels setup and restores normal terminal scrolling. Small
+terminals and redirected output use plain text instead of reserving screen rows.
 The status strip shows **Docker**, **Tools**, and optional **Vault** as **Up**,
 **Down**, or **Missing**. Up means the daemon/container is accessible and healthy.
 Down means stopped, unhealthy, inaccessible, or blocked by Docker. Missing means

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 source "$(dirname "${BASH_SOURCE[0]}")/docker-prerequisite.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/setup-prompts.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/setup-progress.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/tools-container.sh"
 
 # setup.sh runs in Linux/WSL or macOS. Git Bash cannot host Linux benches.
