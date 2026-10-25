@@ -120,6 +120,60 @@ def remote_path(value):
     return value
 
 
+def provider_root(provider):
+    variables = {'claude': ('CLAUDE_PROFILES_HOME', '.claude-profiles'),
+                 'openai': ('CODEX_PROFILES_HOME', '.chatgpt-profiles'),
+                 'gemini': ('GEMINI_PROFILES_HOME', '.gemini-profiles'),
+                 'grok': ('GROK_PROFILES_HOME', '.grok-profiles'),
+                 'glm': ('GLM_PROFILES_HOME', '.glm-profiles')}
+    variable, default = variables[provider]
+    fallback = os.environ.get('CHATGPT_PROFILES_HOME', Path.home() / default) if provider == 'openai' else Path.home() / default
+    base = Path(os.environ.get(variable, fallback))
+    if provider == 'grok' and not os.environ.get(variable) and base.exists() and not os.access(base, os.W_OK):
+        base = Path(os.environ.get('XDG_DATA_HOME', Path.home() / '.local/share')) / 'workbenches/grok-profiles'
+    return safe_path(base / 'profiles')
+
+
+def home_key(value):
+    if not isinstance(value, str) or not value or PurePosixPath(value).is_absolute() or '..' in value.split('/'):
+        raise ValueError('Existing profile has an unsafe credential home; repair it before import.')
+    return str(PurePosixPath(value)).casefold()
+
+
+def merge_profiles(existing, incoming, provider):
+    """Reserve credential directories independently of user-visible profile names."""
+    merged = list(existing); actual = []; names = {}; homes = set()
+    # Launcher setup creates these family directories before its legacy-home
+    # migration loop. A same-named new profile would trigger a recursive copy.
+    families = {row['family'].casefold() for row in [*existing, *incoming]}
+    for row in existing:
+        key = home_key(row.get('profilePath') or row['name'])
+        if key in homes: raise ValueError('Existing profiles share a credential home; repair the manifest before import.')
+        homes.add(key)
+        for name in (row['name'], *row.get('aliases', [])): names[name] = row
+    root = provider_root(provider)
+    for profile in incoming:
+        preferred = profile['name']
+        for suffix in range(1, 10001):
+            name = preferred if suffix == 1 else f'{preferred}-{suffix}'
+            existing_row = names.get(name)
+            if existing_row and (existing_row.get('family'), existing_row.get('email', '').casefold()) == (profile['family'], profile['email'].casefold()):
+                actual.append(existing_row); break
+            relative = profile['family'] + '/' + name
+            target = root / relative
+            legacy = root / name
+            safe_path(target.parent)
+            if (existing_row or name.casefold() in families or home_key(relative) in homes or home_key(name) in homes
+                    or target.exists() or target.is_symlink() or legacy.exists() or legacy.is_symlink()): continue
+            added = dict(profile, name=name, profilePath=relative,
+                         aliases=[a for a in profile.get('aliases', []) if a != name and a not in names])
+            merged.append(added); actual.append(added); homes.add(home_key(relative))
+            for key in (name, *added['aliases']): names[key] = added
+            break
+        else: raise ValueError('Could not allocate an unused profile home safely.')
+    return merged, actual
+
+
 def rclone(scope, connection, operation, path=''):
     directory = connection_dir(scope, connection)
     config = directory / 'rclone.conf'
@@ -250,23 +304,13 @@ def prepare(raw, provider, scope):
         incoming.append(profile)
     destination = safe_path(identities.ROOT / composer.PROVIDERS[provider])
     existing = read_json(destination) if destination.exists() else {'version': 1, 'profiles': [], 'families': []}
-    merged = onboarding.merge_identity_profiles(existing['profiles'], incoming)
+    merged, actual = merge_profiles(existing['profiles'], incoming, provider)
     # Validate global aliases before any launcher script receives the manifest.
     names = set()
     for row in merged:
         values = [row['name'], *row.get('aliases', [])]
         if len(values) != len(set(values)) or names.intersection(values): raise ValueError('Imported profile names or aliases conflict with existing profiles.')
         names.update(values)
-    actual = []
-    for profile in incoming:
-        candidates = {key: p for p in merged for key in (p['name'], *p.get('aliases', []))}
-        name, suffix = profile['name'], 1
-        for _ in range(len(merged) + 2):
-            candidate = candidates.get(name)
-            if candidate and (candidate.get('family'), candidate.get('email', '').casefold()) == (family, profile['email'].casefold()):
-                actual.append(candidate); break
-            suffix += 1; name = f'{profile["name"]}-{suffix}'
-        else: raise ValueError('Could not resolve the imported profile name safely.')
     return destination, dict(existing, version=1, profiles=merged,
                              families=list(dict.fromkeys([*existing.get('families', []), family]))), actual
 

@@ -28,6 +28,9 @@ class CloudTests(unittest.TestCase):
         self.root = Path(temporary.name)
         context = patch.object(cloud.identities, 'ROOT', self.root / 'config')
         context.start(); self.addCleanup(context.stop)
+        context = patch.dict(os.environ, {key: str(self.root / key) for key in
+                             ('CLAUDE_PROFILES_HOME', 'CODEX_PROFILES_HOME', 'GEMINI_PROFILES_HOME', 'GROK_PROFILES_HOME', 'GLM_PROFILES_HOME')})
+        context.start(); self.addCleanup(context.stop)
         self.scope = {'id': 'personal', 'name': 'Personal'}
         self.company = {'id': 'company-' + 'a' * 32, 'name': 'Company'}
         self.connection = {'id': 'b' * 32, 'backend': 'drive', 'label': 'Personal Drive'}
@@ -251,6 +254,49 @@ class CloudTests(unittest.TestCase):
         self.assertEqual((home / '.claude/.credentials.json').read_text(), 'private-default-canary')
         self.assertEqual((home / '.codex/auth.json').read_text(), 'private-default-canary')
         self.assertNotIn('private-default-canary', self.output.getvalue())
+
+    def test_existing_renamed_profile_home_is_reserved_for_both_providers(self):
+        for provider in ('claude', 'openai'):
+            for path in ('personal/account', 'account'):
+                with self.subTest(provider=provider, path=path):
+                    existing = dict(self.row, name='renamed-account', email='old@example.com', family='personal', profilePath=path)
+                    cloud.private_json(cloud.identities.ROOT / cloud.composer.PROVIDERS[provider], {'version': 1, 'profiles': [existing]})
+                    _, result, preview = cloud.prepare(self.raw, provider, self.scope)
+                    self.assertEqual(result['profiles'][0], existing)
+                    self.assertEqual(preview[0]['name'], 'account-2')
+                    self.assertEqual(preview[0]['profilePath'], 'personal/account-2')
+                    self.assertEqual(len({row['profilePath'] for row in result['profiles']}), 2)
+
+    def test_unlisted_existing_credential_home_is_not_adopted(self):
+        for path in ('personal/account', 'account'):
+            with self.subTest(path=path):
+                profile = cloud.provider_root('claude') / path
+                profile.mkdir(parents=True); (profile / '.credentials.json').write_text('private-old-account')
+                _, result, preview = cloud.prepare(self.raw, 'claude', self.scope)
+                self.assertEqual(preview[0]['profilePath'], 'personal/account-2')
+                self.assertEqual((profile / '.credentials.json').read_text(), 'private-old-account')
+
+    def test_profile_family_symlink_cannot_redirect_launcher_writes(self):
+        root = cloud.provider_root('claude'); root.mkdir(parents=True)
+        foreign = self.root / 'foreign'; foreign.mkdir()
+        (root / 'personal').symlink_to(foreign, target_is_directory=True)
+        with self.assertRaises(ValueError): cloud.prepare(self.raw, 'claude', self.scope)
+        self.assertEqual(list(foreign.iterdir()), [])
+
+    def test_new_name_cannot_be_its_future_family_directory(self):
+        raw = json.dumps({'version': 1, 'profiles': [dict(self.row, name='personal')]}).encode()
+        _, _, preview = cloud.prepare(raw, 'claude', self.scope)
+        self.assertEqual(preview[0]['name'], 'personal-2')
+        self.assertEqual(preview[0]['profilePath'], 'personal/personal-2')
+
+    def test_existing_duplicate_or_escaping_homes_fail_without_writes(self):
+        for homes in (('personal/account', 'personal/account'), ('../escape', 'other')):
+            with self.subTest(homes=homes):
+                rows = [dict(self.row, name=name, profilePath=home, family='personal') for name, home in zip(('one', 'two'), homes)]
+                cloud.private_json(cloud.identities.ROOT / 'claude-profiles.json', {'version': 1, 'profiles': rows})
+                before = (cloud.identities.ROOT / 'claude-profiles.json').read_bytes()
+                with self.assertRaises(ValueError): cloud.prepare(self.raw, 'claude', self.scope)
+                self.assertEqual((cloud.identities.ROOT / 'claude-profiles.json').read_bytes(), before)
 
 
 if __name__ == '__main__': unittest.main()
