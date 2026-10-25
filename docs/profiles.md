@@ -2,10 +2,16 @@
 
 This feature is on `feature/profile-onboarding`, outside the v1.5 release.
 
-The broader [v1.6 plan](release-1.6.0.md) also targets broker-controlled company
-credential publication/synchronization and a scheduled CPC maintenance worker.
-Broker/client/CPC code and company synchronization controls are implemented on
-this branch, with real deployment/provider QA pending. See the
+For [v1.6.2](release-1.6.2.md), retrieve mapped Claude/Codex credentials directly
+from Azure Key Vault using Azure device-code sign-in. This requires configured
+AI profiles, a private vault mapping and the user's Azure secret-read permissions;
+company IdP registration and a broker are not required for this route.
+
+Broker deployment, company credential synchronization, provider qualification
+and CPC maintenance move to openProfiler, consumed as a pinned workBenches
+release in v1.7 or v1.8 after qualification. Broker/client/CPC code and company
+synchronization controls already exist but remain opt-in, with real
+deployment/provider QA pending. See the
 [synchronization guide](company-credential-sync.md) and
 [specification](../specs/027-company-credential-sync/spec.md).
 
