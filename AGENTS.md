@@ -15,5 +15,5 @@ OpenSpec/Speckit protocol and project bootstrap contract.
 - Preserve unrelated changes in the parent checkout and in bench submodules.
 
 <!-- SPECKIT START -->
-Active implementation plan: `specs/033-company-connection-wizard/plan.md` (v1.6.2 company onboarding; preserve released 1.6.0/1.6.1 behavior).
+Active implementation plan: `specs/160-rclone-manifest-import/plan.md` (v1.6.2 Tools Rclone connector; stacked on company connection work).
 <!-- SPECKIT END -->

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Docker-only bootstrap for setup's Python, jq, Git and curl. No host packages.
+# Docker-only bootstrap for setup tools and cloud file access. No host packages.
 WORKBENCHES_TOOLS_ROOT="${WORKBENCHES_TOOLS_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 WORKBENCHES_TOOLS_CONTAINER="${WORKBENCHES_TOOLS_CONTAINER:-workbenches-tools}"
-WORKBENCHES_TOOLS_IMAGE="${WORKBENCHES_TOOLS_IMAGE:-workbenches/tools:2026.10.15-v1}"
+WORKBENCHES_TOOLS_IMAGE="${WORKBENCHES_TOOLS_IMAGE:-workbenches/tools:2026.10.25-v1}"
 WORKBENCHES_SERVICES_NETWORK="${WORKBENCHES_SERVICES_NETWORK:-workbenches-services-$(id -u)}"
 WORKBENCHES_VAULT_CONTAINER="${WORKBENCHES_VAULT_CONTAINER:-workbenches-vault}"
 WORKBENCHES_VAULT_IMAGE="${WORKBENCHES_VAULT_IMAGE:-workbenches/vault:2026.10.15-v1}"
@@ -78,7 +78,7 @@ workbenches_requirement_rows() {
         missing) printf 'docker\tDocker\tmissing\tInstall Docker to run workBenches.\n' ;;
         *) printf 'docker\tDocker\tdown\tStart Docker, select Linux containers, or fix daemon access.\n' ;;
     esac
-    printf 'setup_tools\tTools\t%s\tPython 3, jq, Git and curl run in workBenches/tools.\n' "$(workbenches_tools_state "$state")"
+    printf 'setup_tools\tTools\t%s\tPython 3, jq, Git, curl and Rclone run in workBenches/tools.\n' "$(workbenches_tools_state "$state")"
     printf 'vault\tVault\t%s\tOptional credential-access helper; sign-in and unlock are separate.\n' "$(workbenches_vault_state "$state")"
 }
 
@@ -143,12 +143,12 @@ workbenches_tools_state() {
 }
 
 workbenches_tools_image_fingerprint() {
-    cksum "$WORKBENCHES_TOOLS_ROOT/tools-container/"{Dockerfile,workbenches_host.py,host-command} | cksum | { read -r checksum rest; printf '%s\n' "$checksum"; }
+    cksum "$WORKBENCHES_TOOLS_ROOT/tools-container/"{Dockerfile,workbenches_host.py,host-command,rclone_login.py,rclone-open} | cksum | { read -r checksum rest; printf '%s\n' "$checksum"; }
 }
 
 workbenches_tools_fingerprint() {
     local checksum rest
-    IFS=' ' read -r checksum rest < <({ cksum "$WORKBENCHES_TOOLS_ROOT/tools-container/"{Dockerfile,workbenches_host.py,host-command}; printf '%s\n' 'runtime-v3' "$HOME" "$WORKBENCHES_TOOLS_ROOT" "${TMPDIR:-/tmp}" "${SSH_AUTH_SOCK:-}" "${XDG_CONFIG_HOME:-}" "${XDG_CACHE_HOME:-}" "${XDG_DATA_HOME:-}"; } | cksum)
+    IFS=' ' read -r checksum rest < <({ cksum "$WORKBENCHES_TOOLS_ROOT/tools-container/"{Dockerfile,workbenches_host.py,host-command,rclone_login.py,rclone-open}; printf '%s\n' 'runtime-v3' "$HOME" "$WORKBENCHES_TOOLS_ROOT" "${TMPDIR:-/tmp}" "${SSH_AUTH_SOCK:-}" "${XDG_CONFIG_HOME:-}" "${XDG_CACHE_HOME:-}" "${XDG_DATA_HOME:-}"; } | cksum)
     printf '%s\n' "$checksum"
 }
 
@@ -270,7 +270,7 @@ workbenches_tools_use_shims() {
     WORKBENCHES_TOOLS_BIN="${XDG_CACHE_HOME:-$HOME/.cache}/workbenches/tools/bin"
     mkdir -p "$WORKBENCHES_TOOLS_BIN" || return 1
     local tool
-    for tool in python3 jq git curl; do
+    for tool in python3 jq git curl rclone; do
         ln -sf "$WORKBENCHES_TOOLS_ROOT/scripts/tools-command.sh" "$WORKBENCHES_TOOLS_BIN/$tool" || return 1
     done
     export WORKBENCHES_TOOLS_ROOT WORKBENCHES_TOOLS_CONTAINER WORKBENCHES_NATIVE_PATH WORKBENCHES_TOOLS_BIN

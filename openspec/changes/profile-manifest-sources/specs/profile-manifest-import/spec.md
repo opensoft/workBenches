@@ -1,5 +1,24 @@
 ## ADDED Requirements
 
+### Requirement: Bounded Tools Rclone connector
+Tools SHALL contain a version/digest-pinned Rclone with native browser callbacks.
+Personal/company file import SHALL support local provider manifests and browsing
+connected OneDrive/Google Drive folders, saved per-scope sources and repeat pulls.
+OAuth configuration SHALL remain private and persistent on the local workstation.
+Browser callback publication SHALL be host-loopback-only and temporary. Import
+SHALL preview resulting names and preserve existing matching profiles/credentials.
+
+#### Scenario: Denied cloud browser consent
+- **WHEN** the user declines the provider's authorization request
+- **THEN** the temporary login container and callback listener are removed
+- **AND** previous connections, manifests and credentials remain unchanged
+
+#### Scenario: Pull a selected provider manifest again
+- **WHEN** the user selects a saved cloud-file source under a personal/company scope
+- **THEN** Tools reads the file using that scope's private Rclone connection
+- **AND** review precedes merging new metadata and creating isolated local launchers
+- **AND** import neither uploads files nor authenticates an AI-provider account
+
 ### Requirement: Versioned personal and company sources
 v1.6.2 SHALL associate file and GitHub repository manifest sources with the
 selected personal or company scope and retain a stable source/connection record.

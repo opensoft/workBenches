@@ -26,6 +26,11 @@ Speckit implementation feature before runtime changes; its tasks.md will own the
 only executable checklist. Do not reopen completed feature 033 wizard tasks or
 claim provider qualification from those tests. No release publication is implied.
 
+Implementation authorization on 2026-10-25: add Rclone to Tools for connection
+and profile-file pulls. Bounded implementation owner:
+`specs/160-rclone-manifest-import/`; its tasks.md is the sole executable checklist
+for this connector. It does not deliver all future source providers/link formats.
+
 Clarification pending: whether "update it" includes editing/publishing the remote
 manifest, in addition to re-importing source changes. Remote write permissions
 and publishing remain undesigned until answered; read/import requirements below

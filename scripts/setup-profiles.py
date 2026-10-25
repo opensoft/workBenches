@@ -106,7 +106,7 @@ def edit(profile, data):
         if company:
             print('C Company sign-in   R Connection setup   S Local sign-out   I Import enrollment')
             print('Y Company credential synchronization')
-        print('A AI accounts   B Back   Q Cancel')
+        print('A AI accounts   F Profile manifest files   B Back   Q Cancel')
         choice = ask('Action', 'b').lower()
         if choice == 'b':
             return
@@ -145,6 +145,9 @@ def edit(profile, data):
             propagate_cancel(result.returncode)
         elif choice == 's' and company:
             account(profile, ['--logout'])
+        elif choice == 'f':
+            from cloud_profiles import menu
+            menu(profile)
         elif choice == 'a':
             print('AI provider sign-in and vault grants are separate from company/GitHub sign-in.')
             env = dict(os.environ, WORKBENCHES_IDENTITY_EMAIL=profile['email'],
@@ -272,7 +275,7 @@ def identity_menu(scope, identity, data):
             lambda item: [identity['email'], 'Default identity' if scope['defaultIdentityId'] == identity['id'] else 'Additional identity',
                           '', ('@' + item['login'] + ' · ' + item['state']) if item else 'No GitHub accounts linked.',
                           'G connects or links an existing account.', 'Defaults apply inside workBenches only.'],
-            'G Link GitHub  E Edit  D Default GitHub  U Unlink  A AI')
+            'G Link GitHub  E Edit  D Default GitHub  U Unlink  A AI  F Manifest files')
         if action == 'b': return
         if action == 'g': connect_github(scope, data, identity)
         elif action == 'enter' and selected: github_details(selected, data)
@@ -287,6 +290,9 @@ def identity_menu(scope, identity, data):
                 raise ValueError('That email already belongs to an identity in this profile.')
             identity.update(name=name, email=address); profiles.save(data)
         elif action == 'a': ai_accounts(scope, identity)
+        elif action == 'f':
+            from cloud_profiles import menu
+            menu(scope)
 
 
 def scope_menu(scope, data):
@@ -298,11 +304,14 @@ def scope_menu(scope, data):
             lambda item: [item['email'], f'{len(item["githubIds"])} linked GitHub accounts',
                           'Enter to edit identity and GitHub links.',
                           'Company sign-in is separate from GitHub.' if company else 'Your personal identities stay separate from companies.'],
-            'A Add identity  D Default' + ('  C Sign in  R Connection setup  I Enrollment  Y Sync  S Sign out  E Rename' if company else ''))
+            'A Add identity  D Default  F Manifest files' + ('  C Sign in  R Connection setup  I Enrollment  Y Sync  S Sign out  E Rename' if company else ''))
         if action == 'b': return
         if action == 'enter': identity_menu(scope, identity, data)
         elif action == 'a': identity_menu(scope, identity_form(scope, data), data)
         elif action == 'd': scope['defaultIdentityId'] = identity['id']; profiles.save(data)
+        elif action == 'f':
+            from cloud_profiles import menu
+            menu(scope)
         elif company and action == 'e':
             name = profiles.text(ask('Company name', scope['name']))
             profiles.add_company({'companies': [s for s in data['companies'] if s['id'] != scope['id']]}, name, scope['email'])

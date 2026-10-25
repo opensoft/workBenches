@@ -32,6 +32,11 @@ v1.8. Imported manifest metadata and provider credentials remain separate.
 
 ## Profiles manager
 
+Development connector: **F Manifest files** imports one local provider manifest
+or connects/browses Google Drive/OneDrive using the pinned Rclone in Tools.
+Saved sources support explicit repeat pulls. See the [cloud import guide](cloud-profile-import.md)
+for the file contract, Google app setup and current sharing-link/registry limits.
+
 Setup has three pages. Components selects software; Requirements manages Docker,
 Tools, and Vault readiness; **Profiles** manages personal and company identities.
 Press **G** to open Profiles and **Enter** on **Personal & companies**. Resolve
