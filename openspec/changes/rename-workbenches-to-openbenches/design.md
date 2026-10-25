@@ -57,6 +57,12 @@ The shared-image publisher is not a test target. The first `openBenches` release
 
 Recommended alias support is 90 days or two release cycles, whichever is longer; cheap read fallbacks and persistent identifiers may remain indefinitely. Removal requires a later approved major/deprecation change after clean-install and upgrade evidence. This change does not authorize legacy deletion, credential rotation, GHCR namespace migration, or `openWorkBenches*` consolidation.
 
+### D8: Fail closed across the credential composition boundary
+
+Root discovery alone is insufficient for credential composition: older workBenches installers and launchers still write or read legacy defaults even when a composer emits a manifest into a new root. Non-legacy delegation therefore requires the selected workBenches and AI-Credentials helpers to advertise `openbenches-config-root-v1` through their explicit capability queries. The parent passes equal old/new checkout and config-root variables and the exact preflighted recovery identity; AI-Credentials rechecks workBenches capability after checkout updates and before SOPS installation or manifest composition. Missing or incompatible capabilities refuse before manifest writes. Legacy-default operation requires neither capability and retains existing behavior.
+
+The workBenches capability is part of the runtime implementation, not a declaration to add ahead of correctness. Advertise it only after all affected installers and launchers honor the selected root and synthetic parent/child tests prove that new-root operation never reads or writes legacy manifests or identities. No real new-root provisioning is authorized by the dependent compatibility PRs alone.
+
 ## Consequences
 
 The migration requires coordinated PRs and a quiet administrative window, but avoids a cross-repository flag day. Existing users keep their checkout and state while new installations can adopt `openBenches` after dependent compatibility is proven. Rollback primarily rolls code forward through retained aliases rather than restoring moved data.
