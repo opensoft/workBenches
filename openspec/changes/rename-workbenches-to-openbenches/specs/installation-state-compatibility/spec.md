@@ -37,6 +37,25 @@ Consumers SHALL select one configuration/state root per contract and SHALL NOT m
 - **WHEN** credential synchronization is installed or started during mixed-version operation
 - **THEN** one agent, one lock, and one lease root remain authoritative; a later explicit state migration first stops and drains the old agent.
 
+### Requirement: Capability-gated credential composition
+
+Non-legacy credential composition SHALL require the selected workBenches and AI-Credentials helpers to advertise `openbenches-config-root-v1`, SHALL pass the selected checkout, configuration root, and exact preflighted recovery identity explicitly, and SHALL NOT read or write legacy manifests or identities in new-root mode.
+
+#### Scenario: Unsupported downstream tooling
+
+- **WHEN** a new or explicit non-legacy config root is selected but either required capability is missing or incompatible
+- **THEN** delegation or composition refuses before manifest writes, without copying, symlinking, merging, or dual-writing old and new trees.
+
+#### Scenario: Legacy-default composition
+
+- **WHEN** the legacy default config root is selected
+- **THEN** neither new capability is required and existing provisioning behavior remains available.
+
+#### Scenario: Capability changes during checkout update
+
+- **WHEN** AI-Credentials updates a workBenches checkout
+- **THEN** it rechecks `openbenches-config-root-v1` before SOPS installation or manifest composition and refuses if the capability is no longer present.
+
 ### Requirement: Durable artifact and identity preservation
 
 Existing schema-v1 identifiers, published release assets, GHCR repositories, OCI label keys, Docker history volumes, identity-provider configuration, secret metadata, and installer ownership locks SHALL remain valid unless a separate versioned migration changes them.

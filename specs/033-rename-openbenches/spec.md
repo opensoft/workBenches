@@ -91,6 +91,7 @@ A new user follows canonical instructions, clones to the new default directory, 
 - **FR-016**: Historical releases, tags, archived records, issue references, and lane history SHALL NOT be rewritten for cosmetic renaming.
 - **FR-017**: The separate `openWorkBenches*` extraction family and future architecture repository names SHALL require their own explicit naming decisions.
 - **FR-018**: Legacy removal, GHCR namespace migration, credential rotation, and `openWorkBenches*` consolidation are outside this feature.
+- **FR-019**: Non-legacy credential composition SHALL require `openbenches-config-root-v1` from selected workBenches and AI-Credentials tooling, pass the selected root and preflighted identity explicitly, and refuse before manifest writes when unsupported; legacy-default composition SHALL NOT require either capability.
 
 ### Key Entities
 
