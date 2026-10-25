@@ -9,11 +9,11 @@ without discovery, partial redraw, key response time and loading indicators.
 ## ADDED Requirements
 
 ### Requirement: Frame head
-Every wizard frame SHALL begin with the Opensoft banner and `openBenches v1.7` to its right on the same row, one blank row, the nav bar and one separator rule with the detected OS right-aligned within it. There SHALL be no separate version/OS row, per-step title or description sentence. This display brand SHALL NOT change the repository VERSION or other product identifiers.
+Every wizard frame SHALL begin with the Opensoft banner, one blank row, and a product/OS row with `openBenches v1.7` on the left and the detected OS on the right. The nav bar SHALL follow between full-width separator rules above and below, with a bold, light-background highlight on the selected step in full and compact navigation. There SHALL be no per-step title or description sentence. This display brand SHALL NOT change the repository VERSION or other product identifiers.
 
 #### Scenario: Head order
 - **WHEN** any step is displayed
-- **THEN** `openBenches v1.7` appears beside the logo, followed by one blank row, the nav bar and a single rule with the detected OS at its right
+- **THEN** the logo is followed by one blank row, the product/OS row, an upper rule, the nav bar with a highlighted selection, and a lower rule
 
 #### Scenario: No step titles
 - **WHEN** any step is displayed
@@ -88,9 +88,9 @@ When the terminal height is known, the frame SHALL never be taller than the term
 - **THEN** the frame drops lines from its top and is still no taller than the terminal
 
 ### Requirement: Banner collapse
-Every banner/brand block SHALL be followed by one blank row before navigation.
+Every banner SHALL be followed by one blank row before the product/OS row and bordered navigation.
 
-The four-row OpenSoft wordmark SHALL be drawn only in the roomy layout, when the frame is at least 59 columns wide so the brand fits beside it and the terminal height is unknown or at least 40 rows; otherwise a one-line `Opensoft` banner with `openBenches v1.7` to its right SHALL be drawn.
+The four-row OpenSoft wordmark SHALL be drawn only in the roomy layout, when the frame is at least 43 columns wide and the terminal height is unknown or at least 40 rows; otherwise a one-line `Opensoft` banner SHALL be drawn. Both forms SHALL keep the product/OS row separate.
 
 #### Scenario: Tall terminal
 - **WHEN** the terminal is 88×40
@@ -98,7 +98,7 @@ The four-row OpenSoft wordmark SHALL be drawn only in the roomy layout, when the
 
 #### Scenario: Shorter terminal
 - **WHEN** the terminal is 88×39
-- **THEN** one line shows `Opensoft` with `openBenches v1.7` beside it
+- **THEN** one line shows `Opensoft`, followed by a blank row and the separate product/OS row
 
 ### Requirement: First paint without discovery
 The first frame SHALL be drawn before any Docker, jq, Python, Git or network check runs, and rendering any step SHALL read only in-memory state, never running a discovery command.

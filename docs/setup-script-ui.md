@@ -17,9 +17,10 @@ Harness and Tools show their queued counts. Profiles has no queued count because
 its rows open actions immediately. A narrow frame uses `Step N of 6` and six
 progress marks instead of the full navigation line.
 
-The header shows **openBenches v1.7** beside the Opensoft logo. The detected OS
-is at the right of the divider below navigation. Narrow or short terminals use
-the compact logo so both brand and navigation fit.
+The header shows the Opensoft logo, a blank row, then **openBenches v1.7** on the
+left and the detected OS on the right. Navigation has a full-width line above
+and below, with a bold, light-background highlight on the selected step in both
+the full and compact forms. Narrow or short terminals use the compact logo.
 
 ## Review before Apply
 

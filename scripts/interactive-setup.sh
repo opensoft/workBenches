@@ -91,6 +91,7 @@ SILVER='\033[38;5;252m'
 SILVER_MUTED='\033[38;5;245m'
 SILVER_EDGE='\033[38;5;239m'
 SILVER_FOCUS='\033[48;5;235m\033[38;5;255m'
+SILVER_NAV_ACTIVE='\033[1;48;5;252;38;5;16m'
 setup_ui_width=87
 setup_ui_painted=false
 setup_ui_frame_columns=0
@@ -132,13 +133,12 @@ setup_ui_pair() {
 }
 
 setup_ui_banner() {
-    local banner_key="$setup_ui_width:$setup_ui_layout:$setup_ui_height" banner_line banner_index banner_char banner_position banner_tone banner_result banner_gap
+    local banner_key="$setup_ui_width:$setup_ui_layout:$setup_ui_height" banner_line banner_index banner_char banner_position banner_tone banner_result
     [[ "$setup_banner_cache_key" != "$banner_key" ]] || return 0
     setup_banner_cache_key="$banner_key"
     setup_banner_lines=()
-    if (( setup_ui_width < 43 + ${#setup_ui_brand} )) || [[ "$setup_ui_layout" == tight ]] || { [[ -n "$setup_ui_height" ]] && ((setup_ui_height < 40)); }; then
-        banner_gap=$(( (setup_ui_width - 10 - ${#setup_ui_brand}) / 2 ))
-        printf -v banner_result '  %bOpensoft%b%*s%b%s%b' "$SILVER" "$NC" "$banner_gap" '' "$SILVER" "$setup_ui_brand" "$NC"
+    if (( setup_ui_width < 43 )) || [[ "$setup_ui_layout" == tight ]] || { [[ -n "$setup_ui_height" ]] && ((setup_ui_height < 40)); }; then
+        printf -v banner_result '  %bOpensoft%b' "$SILVER" "$NC"
         setup_banner_lines=("$banner_result")
         return
     fi
@@ -162,10 +162,6 @@ setup_ui_banner() {
                 *) banner_result+="$banner_char" ;;
             esac
         done
-        if ((banner_index == 2)); then
-            banner_gap=$(( (setup_ui_width - 2 - ${#banner_line} - ${#setup_ui_brand}) / 2 ))
-            printf -v banner_result '%s%*s%b%s%b' "$banner_result" "$banner_gap" '' "$SILVER" "$setup_ui_brand" "$NC"
-        fi
         setup_banner_lines+=("$banner_result"$'\033[0m')
     done
 }
@@ -1543,7 +1539,7 @@ setup_move_step() {
 }
 
 setup_frame_head() {
-    local head_line head_os nav_plain='' nav_styled='' nav_item nav_mark nav_index nav_current=${setup_section_step[$CURRENT_SECTION]} nav_count nav_key nav_section nav_marks='' nav_color
+    local head_line nav_plain='' nav_styled='' nav_item nav_mark nav_index nav_current=${setup_section_step[$CURRENT_SECTION]} nav_count nav_key nav_section nav_marks='' nav_color
     local -a nav_counts=(0 0 0 0 0 0)
     for nav_key in "${!component_checked[@]}"; do
         [[ "${component_checked[$nav_key]}" == true && -n "${component_action[$nav_key]}" ]] || continue
@@ -1557,6 +1553,11 @@ setup_frame_head() {
     setup_ui_banner
     for head_line in "${setup_banner_lines[@]}"; do setup_frame_append "$head_line"; done
     setup_frame_append ''
+    setup_ui_pair_v head_line "$setup_ui_brand" "${setup_os_label:-}" "$setup_ui_width"
+    printf -v head_line '%b%s%b' "$SILVER" "$head_line" "$NC"
+    setup_frame_append "$head_line"
+    setup_ui_rule_v head_line "$setup_ui_width"
+    setup_frame_append "$head_line"
     for ((nav_index=0; nav_index<6; nav_index++)); do
         nav_mark=○; nav_color="$SILVER_MUTED"
         if ((nav_index < nav_current)); then nav_mark=✓; fi
@@ -1572,20 +1573,16 @@ setup_frame_head() {
         ((nav_count == 0)) || nav_item+=" $nav_count"
         if ((nav_index == nav_current)); then
             nav_item=" $nav_item"
-            printf -v head_line '%b%b%s%b' "$SILVER_FOCUS" "$nav_color" "$nav_item" "$NC"
+            printf -v head_line '%b%s%b' "$SILVER_NAV_ACTIVE" "$nav_item" "$NC"
         else printf -v head_line '%b%s%b' "$nav_color" "$nav_item" "$NC"; fi
         if [[ -n "$nav_plain" ]]; then nav_plain+=' ─ '; nav_styled+=' ─ '; fi
         nav_plain+="$nav_item"; nav_styled+="$head_line"
     done
     if (( ${#nav_plain} > setup_ui_width )); then
-        head_line="Step $((nav_current+1)) of 6 · ${setup_step_names[nav_current]} $nav_marks"
+        printf -v head_line 'Step %s of 6 · %b%s%b %s' "$((nav_current+1))" "$SILVER_NAV_ACTIVE" "${setup_step_names[nav_current]}" "$NC" "$nav_marks"
     else head_line=$nav_styled; fi
     setup_frame_append "$head_line"
-    if [[ -n "${setup_os_label:-}" ]]; then
-        setup_ui_cut_v head_os "$setup_os_label" "$((setup_ui_width - 4))"
-        setup_ui_rule_v head_line "$((setup_ui_width - ${#head_os} - 3))"
-        head_line+=" $head_os ─"
-    else setup_ui_rule_v head_line "$setup_ui_width"; fi
+    setup_ui_rule_v head_line "$setup_ui_width"
     setup_frame_append "$head_line"
 }
 setup_frame_selector() {
