@@ -1,6 +1,7 @@
-# Profiles (v1.6 development)
+# Profiles (v1.6.x)
 
-This feature is on `feature/profile-onboarding`, outside the v1.5 release.
+The Profiles manager ships in v1.6.x. Planned v1.6.2 additions are labeled below;
+an approved scope decision is not a claim that its implementation is complete.
 
 For [v1.6.2](release-1.6.2.md), retrieve mapped Claude/Codex credentials directly
 from Azure Key Vault using Azure device-code sign-in. This requires configured
@@ -14,6 +15,22 @@ synchronization controls already exist but remain opt-in, with real
 deployment/provider QA pending. See the
 [synchronization guide](company-credential-sync.md) and
 [specification](../specs/027-company-credential-sync/spec.md).
+
+## Manifest-source scope decision (2026-10-25)
+
+For v1.6.2, "workstation" means this local computer. Personal and company scopes
+are to retain their manifest source (local/hosted file or GitHub repository) and
+an explicitly linked browser-authenticated connection for later access/refresh.
+Local JSON imports use filesystem access; private remote files/repositories use
+the provider's browser authorization. OneDrive/Google Drive need file connectors;
+company Keycloak sign-in alone does not grant those providers' permissions.
+These expanded source/refresh requirements are planned, not delivered by the
+current wizard. See the [proposal](../openspec/changes/profile-manifest-sources/proposal.md)
+for implemented foundations, missing integration and pending remote-write scope.
+Peer-workstation communication through a workBenches service is targeted for
+v1.8. Imported manifest metadata and provider credentials remain separate.
+
+## Profiles manager
 
 Setup has three pages. Components selects software; Requirements manages Docker,
 Tools, and Vault readiness; **Profiles** manages personal and company identities.

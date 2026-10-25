@@ -37,6 +37,14 @@ Track upstream completion in [openProfiler #30](https://github.com/opensoft/open
 and integration in [workBenches #229](https://github.com/opensoft/workBenches/issues/229).
 This is a direction and migration plan, not an implemented extraction.
 
+Version boundary refined by Brett on 2026-10-25: workstation access in v1.6.2
+is local only. File/repository manifest imports for personal/company scopes must
+remember explicitly linked browser-authorized sources; the expanded workflow
+remains to be implemented. A service shipped with workBenches for workstations
+to communicate is targeted specifically for v1.8. This peer-service boundary
+does not require a remote service or Keycloak for v1.6.2 imports. See the
+[manifest-source proposal](../openspec/changes/profile-manifest-sources/proposal.md).
+
 The target company deployment includes a separately deployable broker service
 container connected to the company's existing vault. The current openProfiler
 installer does not provide this company deployment. The workBenches Vault

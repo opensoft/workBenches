@@ -47,6 +47,26 @@ code remains opt-in; it is not a prerequisite or acceptance claim for the
 v1.6.2 direct recovery route. This scope decision does not remove inherited code
 or change the historical v1.6.0 release notes.
 
+## Planned manifest-source scope — approved 2026-10-25
+
+Workstation access is local to the computer running workBenches in v1.6.2.
+Personal and company scopes are to support manifest import from local/hosted
+files or a GitHub repository, with a remembered source and linked connection.
+Private remote source authentication is browser-only; local files use filesystem
+permissions and public files need no artificial sign-in. OneDrive/Google Drive
+links require provider-specific authenticated retrieval, not just a copied URL.
+
+Existing GitHub browser connections and company Keycloak sessions provide part
+of the foundation. The scoped source-import/refresh workflow, binding repository
+reads to the chosen GitHub connection, and Microsoft/Google file connectors are
+not implemented by the company-connection wizard. Do not claim this expanded
+scope is complete. See the [governed proposal](../openspec/changes/profile-manifest-sources/proposal.md).
+Whether updates also include publishing remote edits is pending clarification.
+
+Workstation-to-workstation communication is deferred to v1.8 through a service
+shipped with workBenches, respecting openProfiler's reusable profile-management
+ownership. No peer service is required for v1.6.2 file/repository imports.
+
 ## Guided company connection
 
 First-time company login now explains application registration and opens a
