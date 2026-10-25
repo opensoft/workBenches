@@ -23,6 +23,7 @@ spec = importlib.util.spec_from_file_location('cloud_onboarding', HERE / 'onboar
 onboarding = importlib.util.module_from_spec(spec); spec.loader.exec_module(onboarding)
 composer = onboarding.COMPOSER
 LIMIT = 1024 * 1024
+AGGREGATE_LIMIT = 8 * LIMIT
 BACKENDS = {'drive': 'Google Drive', 'onedrive': 'OneDrive'}
 PROVIDERS = {'claude': 'Claude', 'openai': 'Codex', 'gemini': 'Gemini', 'grok': 'Grok', 'glm': 'GLM'}
 NAME = re.compile(r'[a-z0-9][a-z0-9-]{0,79}')
@@ -36,6 +37,8 @@ def safe_path(path):
 
 
 def private_json(path, value):
+    if len((json.dumps(value, indent=2) + '\n').encode()) > AGGREGATE_LIMIT:
+        raise ValueError('Combined local profile metadata is too large; previous configuration is preserved.')
     path = safe_path(path)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     composer.atomic_json(path, value)
@@ -58,7 +61,7 @@ def scope_root(scope):
 
 def load(scope):
     file = scope_root(scope) / 'sources.json'
-    data = read_json(file, private=True) if file.exists() else {'version': 1, 'connections': [], 'sources': []}
+    data = read_json(file, limit=AGGREGATE_LIMIT, private=True) if file.exists() else {'version': 1, 'connections': [], 'sources': []}
     if not isinstance(data, dict) or data.get('version') != 1:
         raise ValueError('Unsupported source metadata.')
     for key in ('connections', 'sources'):
@@ -152,13 +155,17 @@ def merge_profiles(existing, incoming, provider):
         key = home_key(row.get('profilePath') or row['name'])
         if key in homes: raise ValueError('Existing profiles share a credential home; repair the manifest before import.')
         homes.add(key)
-        for name in (row['name'], *row.get('aliases', [])): names[name] = row
+        for name in (row['name'], *row.get('aliases', [])):
+            key = name.casefold()
+            if key in names and names[key] is not row:
+                raise ValueError('Existing profile names or aliases are ambiguous; repair the manifest before import.')
+            names[key] = row
     root = provider_root(provider)
     for profile in incoming:
         preferred = profile['name']
         for suffix in range(1, 10001):
             name = preferred if suffix == 1 else f'{preferred}-{suffix}'
-            existing_row = names.get(name)
+            existing_row = names.get(name.casefold())
             if existing_row and (existing_row.get('family'), existing_row.get('email', '').casefold()) == (profile['family'], profile['email'].casefold()):
                 actual.append(existing_row); break
             relative = profile['family'] + '/' + name
@@ -168,9 +175,9 @@ def merge_profiles(existing, incoming, provider):
             if (existing_row or name.casefold() in families or home_key(relative) in homes or home_key(name) in homes
                     or target.exists() or target.is_symlink() or legacy.exists() or legacy.is_symlink()): continue
             added = dict(profile, name=name, profilePath=relative,
-                         aliases=[a for a in profile.get('aliases', []) if a != name and a not in names])
+                         aliases=[a for a in profile.get('aliases', []) if a.casefold() != name.casefold() and a.casefold() not in names])
             merged.append(added); actual.append(added); homes.add(home_key(relative))
-            for key in (name, *added['aliases']): names[key] = added
+            for key in (name, *added['aliases']): names[key.casefold()] = added
             break
         else: raise ValueError('Could not allocate an unused profile home safely.')
     return merged, actual
@@ -307,16 +314,19 @@ def prepare(raw, provider, scope):
         profile.update(family=family, workspace=scope['name'], profilePath=f'{family}/{profile["name"]}')
         incoming.append(profile)
     destination = safe_path(identities.ROOT / composer.PROVIDERS[provider])
-    existing = read_json(destination) if destination.exists() else {'version': 1, 'profiles': [], 'families': []}
+    existing = read_json(destination, limit=AGGREGATE_LIMIT) if destination.exists() else {'version': 1, 'profiles': [], 'families': []}
     merged, actual = merge_profiles(existing['profiles'], incoming, provider)
     # Validate global aliases before any launcher script receives the manifest.
     names = set()
     for row in merged:
-        values = [row['name'], *row.get('aliases', [])]
-        if len(values) != len(set(values)) or names.intersection(values): raise ValueError('Imported profile names or aliases conflict with existing profiles.')
+        values = {value.casefold() for value in (row['name'], *row.get('aliases', []))}
+        if names.intersection(values): raise ValueError('Imported profile names or aliases conflict with existing profiles.')
         names.update(values)
-    return destination, dict(existing, version=1, profiles=merged,
-                             families=list(dict.fromkeys([*existing.get('families', []), family]))), actual
+    result = dict(existing, version=1, profiles=merged,
+                  families=list(dict.fromkeys([*existing.get('families', []), family])))
+    if len((json.dumps(result, indent=2) + '\n').encode()) > AGGREGATE_LIMIT:
+        raise ValueError('Combined local profile metadata is too large; previous configuration is preserved.')
+    return destination, result, actual
 
 
 def import_source(scope, source, connection=None):

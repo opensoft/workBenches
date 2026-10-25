@@ -296,6 +296,40 @@ class CloudTests(unittest.TestCase):
         self.assertEqual(result.decode().strip(), value)
         self.assertFalse(marker.exists())
 
+    def test_case_insensitive_launcher_alias_cannot_shadow_a_new_account(self):
+        existing = dict(self.row, name='old', aliases=['Account'], email='old@example.com', family='personal', profilePath='personal/old')
+        cloud.private_json(cloud.identities.ROOT / 'claude-profiles.json', {'version': 1, 'profiles': [existing]})
+        _, result, preview = cloud.prepare(self.raw, 'claude', self.scope)
+        self.assertEqual(preview[0]['name'], 'account-2')
+        self.assertEqual(result['profiles'][0], existing)
+        changed = json.dumps({'version': 1, 'profiles': [dict(self.row, name='different', aliases=['account'])]}).encode()
+        _, result, preview = cloud.prepare(changed, 'claude', self.scope)
+        self.assertEqual(preview[0]['aliases'], [])
+        keys = [v.casefold() for row in result['profiles'] for v in (row['name'], *row.get('aliases', []))]
+        self.assertEqual(len(keys), len(set(keys)))
+
+    def test_compact_source_can_be_reimported_after_large_pretty_aggregate_write(self):
+        rows = [dict(self.row, name=f'account-{i}', accountId='a' * 350) for i in range(2000)]
+        raw = json.dumps({'version': 1, 'profiles': rows}, separators=(',', ':')).encode()
+        self.assertLess(len(raw), cloud.LIMIT)
+        path, first, _ = cloud.prepare(raw, 'claude', self.scope)
+        cloud.private_json(path, first)
+        self.assertGreater(path.stat().st_size, cloud.LIMIT)
+        _, second, _ = cloud.prepare(raw, 'claude', self.scope)
+        self.assertEqual(second, first)
+
+    def test_oversized_aggregate_rejected_before_replacing_saved_manifest(self):
+        path = cloud.identities.ROOT / 'claude-profiles.json'
+        cloud.private_json(path, {'version': 1, 'profiles': []})
+        before = path.read_bytes()
+        raw = json.dumps({'version': 1, 'profiles': [dict(self.row, accountId='a' * 512)]}).encode()
+        with patch.object(cloud, 'AGGREGATE_LIMIT', 400), self.assertRaisesRegex(ValueError, 'too large'):
+            cloud.prepare(raw, 'claude', self.scope)
+        self.assertEqual(path.read_bytes(), before)
+        with patch.object(cloud, 'AGGREGATE_LIMIT', 10), self.assertRaises(ValueError):
+            cloud.private_json(path, {'would': 'overwrite'})
+        self.assertEqual(path.read_bytes(), before)
+
     def test_existing_duplicate_or_escaping_homes_fail_without_writes(self):
         for homes in (('personal/account', 'personal/account'), ('../escape', 'other')):
             with self.subTest(homes=homes):

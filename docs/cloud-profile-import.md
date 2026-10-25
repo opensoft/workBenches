@@ -27,6 +27,9 @@ determines local ownership and paths; remote paths/families do not redirect
 credentials to another scope. Credentials and unknown fields are refused.
 Existing matching profiles are kept, other-account naming collisions receive a
 suffix shown before confirmation, and unrelated manifests remain unchanged.
+Reservations include case-insensitive names/aliases and existing scoped/legacy
+credential homes. Downloads are limited to 1 MiB; composed local metadata has an
+8 MiB limit enforced before replacement, so a larger merged file remains readable.
 Reruns add missing profiles; they do not delete accounts removed from the source
 or overwrite the metadata of matching existing profiles.
 
