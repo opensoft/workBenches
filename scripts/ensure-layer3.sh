@@ -141,7 +141,11 @@ reconcile_stopped_containers_for_image() {
                 return 1
             fi
         fi
-    done < <(docker container ls --all --quiet)
+    done < <(
+        docker container ls --all --quiet \
+            | xargs -r docker container inspect --format '{{.Id}} {{.Config.Image}}' \
+            | awk -v image="$USER_IMAGE" '$2 == image { print $1 }'
+    )
 }
 
 # Check if base image exists
