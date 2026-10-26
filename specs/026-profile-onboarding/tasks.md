@@ -55,3 +55,9 @@ separate follow-up integration work, as recorded in the specification.
 ## Premerge review correction — 2026-10-23
 
 - [x] T001 [O] Preserve separate AI profiles for different identities in one scope; allocate unique names/paths/aliases and retain idempotent reruns, including provider-selection context. — files: `scripts/onboard-ai-profiles.py`, `devcontainer.test/test-setup-profiles.py`, `specs/026-profile-onboarding/tasks.md` — verify: `docker compose -p workbenches-16-review -f devcontainer.test/docker-compose.yml --profile merge-validation run --rm --no-deps --env WORKBENCHES_SETUP_LOG_FILE=/tmp/workbenches-review-setup.log --entrypoint python3 npm-integrity devcontainer.test/test-setup-profiles.py`
+
+## v1.6.1 private bench installation — issue #210
+
+- [x] T002 [O] Restore native gh authentication for GitHub HTTPS source preparation without global configuration/account changes; report actionable clone/submodule failures. — files: `bootstrap.sh`, `scripts/release-workbenches.py`, `docs/profiles.md` — verify: `python3 devcontainer.test/test-git-transport.py`
+- [x] T003 [S] Cover private HTTPS authentication through a PATH-resolved helper, existing helper preservation, denied access, retry, submodules and frozen checkout/failure handling. — files: `devcontainer.test/test-git-transport.py`, `devcontainer.test/test-release-version.py` — verify: `python3 devcontainer.test/test-git-transport.py && python3 devcontainer.test/test-release-version.py`
+- [x] T004 [S] Make the authentication retry fixture deterministic when CI already has gh installed; exercise denied then restored synthetic credentials. — files: `devcontainer.test/test-git-transport.py`, `specs/026-profile-onboarding/plan.md` — verify: `python3 devcontainer.test/test-git-transport.py`

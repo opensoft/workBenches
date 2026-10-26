@@ -27,6 +27,15 @@
 7. Old and new producers/consumers must interoperate during the support window; consumer readers land before producer dual emission.
 8. One installed artifact has one implementation and one ownership lock. Command aliases do not create independent writers.
 
+## Credential capability handoff
+
+Non-legacy credential composition requires both selected dependencies to answer `capability openbenches-config-root-v1` with exactly `openbenches-config-root-v1` and exit status zero:
+
+- workBenches: `python3 scripts/openbenches_compat.py capability openbenches-config-root-v1`
+- AI-Credentials: `scripts/openbenches-capability capability openbenches-config-root-v1`
+
+The parent passes equal new/legacy checkout and config-root variables plus the exact preflighted recovery identity. AI-Credentials rechecks workBenches capability after checkout updates and before SOPS installation or manifest composition. Missing or incompatible capabilities refuse before manifest writes; legacy-default operation requires neither capability. The workBenches capability may be advertised only when its installers and launchers actually honor this single-root contract. Current runtime does not yet advertise it, so real new-root provisioning remains disabled while legacy installation remains available.
+
 ## Durable identifiers retained
 
 - GHCR `ghcr.io/opensoft/workbenches-base` and `workbenches-dev-base`, schema-v1 image manifests, and existing OCI `io.workbenches.*` labels.

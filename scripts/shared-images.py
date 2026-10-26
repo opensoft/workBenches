@@ -86,6 +86,8 @@ def manifest_image(payload, layer, platform, source, parent=None):
     if len(payload) > 65536:
         raise ValueError('manifest too large')
     manifest = json.loads(payload)
+    if not isinstance(manifest, dict):
+        raise ValueError('unsupported manifest')
     if manifest.get('schemaVersion') != 1:
         raise ValueError('unsupported manifest')
     entry = manifest['images'][layer][platform]

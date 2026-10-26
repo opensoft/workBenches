@@ -144,6 +144,14 @@ class NamingContractTests(unittest.TestCase):
         self.assertIn('never merged', rules[2])
         self.assertIn('not moved automatically', rules[5])
 
+    def test_credential_capability_handoff_is_explicit(self):
+        contents = section(self.document, 'Credential capability handoff')
+        self.assertIn('openbenches-config-root-v1', contents)
+        self.assertIn('scripts/openbenches_compat.py capability openbenches-config-root-v1', contents)
+        self.assertIn('scripts/openbenches-capability capability openbenches-config-root-v1', contents)
+        self.assertIn('legacy-default operation requires neither capability', contents)
+        self.assertIn('Current runtime does not yet advertise it', contents)
+
     def test_durable_identifiers_and_non_targets_are_retained(self):
         values = bullets(section(self.document, 'Durable identifiers retained'))
         self.assertEqual(values, EXPECTED_DURABLE_IDENTIFIERS)

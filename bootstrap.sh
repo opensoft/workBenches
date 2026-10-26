@@ -60,6 +60,22 @@ workbenches_clone_url() {
     fi
 }
 
+workbenches_github_git() {
+    # Workstation helpers can contain absolute gh paths that do not exist in
+    # Tools. PATH resolves gh to the native command bridge there. Append a
+    # GitHub-only fallback, preserving existing helpers and account selection.
+    if command -v gh >/dev/null 2>&1; then
+        git -c 'credential.https://github.com.helper=!gh auth git-credential' "$@"
+    else
+        git "$@"
+    fi
+}
+
+workbenches_github_access_help() {
+    printf 'Could not access %s. Check network connectivity and repository access.\n' "${1:-GitHub repositories}" >&2
+    printf 'For a private repository, sign in to GitHub CLI on the workstation with an authorized account:\n  gh auth login --hostname github.com\nThen verify repository access (including organization SSO) and retry setup.\n' >&2
+}
+
 workbenches_clone() {
     local requested_url="$1" destination="$2" url repo status
     shift 2
@@ -78,10 +94,17 @@ workbenches_clone() {
         printf 'SSH clone failed; retrying with %s\n' "$url" >&2
     fi
     # Git owns failed-clone cleanup. Never delete an existing destination to retry.
-    if workbenches_github_repo "$url" >/dev/null; then
+    if repo="$(workbenches_github_repo "$url")"; then
         # An exact identity rewrite wins over the common global rule that
         # rewrites all GitHub HTTPS URLs to SSH; fallback must remain HTTPS.
-        GIT_TERMINAL_PROMPT=0 git -c "url.$url.insteadOf=$url" clone "$@" "$url" "$destination"
+        if GIT_TERMINAL_PROMPT=0 workbenches_github_git -c "url.$url.insteadOf=$url" clone "$@" "$url" "$destination"; then
+            return 0
+        else
+            status=$?
+            case "$status" in 130|143) return "$status" ;; esac
+        fi
+        workbenches_github_access_help "https://github.com/$repo"
+        return "$status"
     else
         git clone "$@" "$url" "$destination"
     fi
@@ -100,17 +123,24 @@ workbenches_init_submodules() {
         fi
     done < <(git -C "$root" config -f .gitmodules --get-regexp '^submodule\..*\.url$')
     if GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="$(workbenches_ssh_command)" \
-        git "${config_args[@]}" -C "$root" submodule update --init --recursive -- "$@"; then
+        workbenches_github_git "${config_args[@]}" -C "$root" submodule update --init --recursive -- "$@"; then
         return 0
     else
         status=$?
         case "$status" in 130|143) return "$status" ;; esac
     fi
     printf 'Submodule update failed; retrying GitHub repositories with HTTPS.\n' >&2
-    GIT_TERMINAL_PROMPT=0 git \
+    if GIT_TERMINAL_PROMPT=0 workbenches_github_git \
         -c 'url.https://github.com/.insteadOf=git@github.com:' \
         -c 'url.https://github.com/.insteadOf=ssh://git@github.com/' \
-        -C "$root" submodule update --init --recursive -- "$@"
+        -C "$root" submodule update --init --recursive -- "$@"; then
+        return 0
+    else
+        status=$?
+        case "$status" in 130|143) return "$status" ;; esac
+    fi
+    workbenches_github_access_help
+    return "$status"
 }
 
 workbenches_prepare_fresh_roots() {

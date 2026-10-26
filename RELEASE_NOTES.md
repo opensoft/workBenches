@@ -1,30 +1,25 @@
-# workBenches 1.6.0-rc.1 — Frozen release candidate
+# workBenches 1.6.1
 
-Frozen on 2026-10-19 for testing. This is not the stable/latest product release.
-v1.5.0 remains stable. Company credential sharing and new provider modes are not
-activated by this release preparation.
+This patch retains the tested v1.6 setup and fixes private GitHub bench cloning
+through the workstation's GitHub CLI credentials when Git runs inside Tools.
+Existing SSH access and Git credential helpers remain in place. A retry also
+finishes a previously interrupted bench submodule initialization.
 
-## Included
+All 12 bench source pins and the v1.6.0 identity/company workflows are retained.
+The v1.7 guided wizard remains on its separate development branch. Company
+identity-provider registration guidance is a v1.6.2 follow-up; this patch keeps
+the existing administrator-enrollment and issuer/client-ID sign-in behavior.
 
-- Multiple personal/company identities and reusable verified GitHub account links.
-- Keyboard Profiles management and independent company sign-in sessions.
-- Opt-in company credential broker/client, versioned publication, workstation
-  synchronization, and CPC maintenance.
-- Stable setup/launcher and release-validation fixes through main `5880c09`.
+Brett accepted the v1.6.1 candidate on Raven on 2026-10-24 and requested release
+as tested. The private-auth fix at `e07ac4c` has passing Workstation Setup,
+source-freeze and CodeQL CI and an exact-head Codex review without findings.
+These results and manual acceptance do not certify unexecuted full native/live
+provider gates. Publication evidence and any explicit owner-authorized release
+exception must be recorded honestly; no missing live result is marked passed.
 
-Feature input is `edefc67c340603a783876cdf1b424b3d9f1093db`. The integrated
-candidate retains all 12 existing bench repository source pins. No existing
-workstation checkout, credential, or running bench is replaced by this freeze.
+Company credential sharing requires explicit configuration and approved
+provider modes. Unsupported modes remain disabled; existing credentials are
+not automatically migrated or published.
 
-## Validation boundary
-
-Fixture and regression tests do not establish real provider approval. Real
-GitHub/company browser authentication, workstation acceptance of the new Profiles
-flows, supported provider-mode validation, and live managed-identity Key Vault
-deployment remain gates for stable 1.6.0. Examples and unsupported modes remain
-disabled. The exact candidate's test/CI evidence must be recorded separately
-from earlier implementation tests.
-
-See [candidate scope and gates](docs/release-1.6.0-rc.1.md) and
-[the release process](docs/releases.md). Published tags are immutable. A stable
-1.6.0 tag requires its own final reviewed and validated commit.
+See [the patch release notes](docs/release-1.6.1.md) and
+[the release validation procedure](docs/release-automation.md).
