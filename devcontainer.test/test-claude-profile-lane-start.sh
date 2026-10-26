@@ -8,6 +8,7 @@
 # the same profile.
 
 set -euo pipefail
+unset CLAUDE_CODE_EFFORT_LEVEL
 
 # Count successful explicit assertions, including repeated fixture checks.
 assertions=0
@@ -145,7 +146,7 @@ common_env=(
     "TMPDIR=$TEST_ROOT"
 )
 
-expected_claude_args='--allow-dangerously-skip-permissions --dangerously-skip-permissions --permission-mode bypassPermissions'
+expected_claude_args='--allow-dangerously-skip-permissions --dangerously-skip-permissions --permission-mode bypassPermissions --effort xhigh'
 
 # ---------------------------------------------------------------------------
 # 0. --help documents --lane / CLAUDE_LANE (the Land proof's own command).

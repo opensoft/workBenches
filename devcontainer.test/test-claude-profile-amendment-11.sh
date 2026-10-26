@@ -50,6 +50,7 @@
 # different pictures of the estate.
 
 set -euo pipefail
+unset CLAUDE_CODE_EFFORT_LEVEL
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -504,7 +505,7 @@ common_env=(
     "TMPDIR=$TEST_ROOT"
 )
 
-claude_args='--allow-dangerously-skip-permissions --dangerously-skip-permissions --permission-mode bypassPermissions'
+claude_args='--allow-dangerously-skip-permissions --dangerously-skip-permissions --permission-mode bypassPermissions --effort xhigh'
 note='no lane for this window; run lane-start <repo> <n> inside it'
 
 reset_logs() {

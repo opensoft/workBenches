@@ -719,6 +719,32 @@ claude_args_start_session() {
   return 0
 }
 
+# Unlike lane/tmux routing, print-mode inference also needs a startup effort.
+# Keep the original argv intact: first-argument classification happens before
+# this fallback is appended to the separate Claude flags array.
+claude_needs_default_effort() {
+  local settings="$1" argument
+  shift
+  case "${1:-}" in
+    mcp|plugin|plugins|doctor|install|update|upgrade|auth|agents|auto-mode|gateway|import|logs|purge|respawn|rm|setup-token|stop|kill|ultrareview|attach|--help|-h|--version|-v)
+      return 1
+      ;;
+  esac
+  [[ -z "${CLAUDE_CODE_EFFORT_LEVEL:-}" ]] || return 1
+  for argument in "$@"; do
+    case "$argument" in
+      --) break ;;
+      --effort|--effort=*) return 1 ;;
+    esac
+  done
+  # Claude applies profile env itself; adding a CLI default would override it.
+  if jq -e '(.env.CLAUDE_CODE_EFFORT_LEVEL // "") | strings | length > 0' \
+      "$settings" >/dev/null; then
+    return 1
+  fi
+  return 0
+}
+
 claude_run_is_interactive() {
   [[ -t 0 && -t 1 ]] || return 1
   [[ "${WORKBENCHES_CLAUDE_TMUX:-auto}" != off ]] || return 1
@@ -1013,8 +1039,12 @@ act1_compose_child_command() {
   # resolution, and no stale version is handed on.
   env_prefix=(env -u LANES_HOST -u LANES_OS -u LANES_CONTAINER -u CLAUDE_BIN
     -u CLAUDE_RESOLVED_BIN -u CLAUDE_VERIFIED_VERSION
-    -u CLAUDE_NO_LANE -u CLAUDE_LANE -u CLAUDE_LANE_DIR
+    -u CLAUDE_NO_LANE -u CLAUDE_LANE -u CLAUDE_LANE_DIR -u CLAUDE_CODE_EFFORT_LEVEL
     WORKBENCHES_CLAUDE_TMUX_CHILD=1 "CLAUDE_BIN=$claude_bin")
+  # Effort belongs to this client launch, not a stale tmux server environment.
+  # Thread even an explicit empty value; the child then applies its fallback.
+  [[ -z "${CLAUDE_CODE_EFFORT_LEVEL+x}" ]] \
+    || env_prefix+=("CLAUDE_CODE_EFFORT_LEVEL=$CLAUDE_CODE_EFFORT_LEVEL")
   # THE WORKSTATION, THREADED INTO THE SESSION THIS LAUNCH CREATES (`R-A11-14`).
   # `lane_export_workstation` has already exported it on this side of the
   # re-exec; tmux does not reliably hand a freshly-exported variable to a new
@@ -3265,6 +3295,9 @@ case "$action" in
         claude_flags=(--allow-dangerously-skip-permissions
                       --dangerously-skip-permissions
                       --permission-mode bypassPermissions)
+        if claude_needs_default_effort "$config_dir/settings.json" "$@"; then
+          claude_flags+=(--effort xhigh)
+        fi
         # Published only once every part of it is settled: the lane, where it
         # came from, the window's address, and the directory that is actually
         # being passed rather than the one that was merely derived.

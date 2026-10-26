@@ -44,6 +44,7 @@
 # resolution and nothing else.
 
 set -euo pipefail
+unset CLAUDE_CODE_EFFORT_LEVEL
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -385,7 +386,8 @@ common_env=(
     "TMPDIR=$TEST_ROOT"
 )
 
-claude_args='--allow-dangerously-skip-permissions --dangerously-skip-permissions --permission-mode bypassPermissions'
+utility_args='--allow-dangerously-skip-permissions --dangerously-skip-permissions --permission-mode bypassPermissions'
+claude_args="$utility_args --effort xhigh"
 note='no lane for this window; run lane-start <repo> <n> inside it'
 
 reset_logs() {
@@ -857,7 +859,7 @@ launch \
     -- run team002 --version
 [[ ! -e "$LANE_START_LOG" ]] || fail "--version: it was handed to lane-start ('$(lane_start_argv)')"; assertion
 [[ ! -e "$LANES_EDIT_LOG" ]] || fail "--version: the register was read for a launch that is no conversation"; assertion
-grep -Fxq -- "$claude_args --version" "$CLAUDE_LOG" \
+grep -Fxq -- "$utility_args --version" "$CLAUDE_LOG" \
     || fail "--version: Claude did not receive its arguments unchanged ($(cat "$CLAUDE_LOG" 2>/dev/null))"; assertion
 grep -q "$note" "$ERR_LOG" && fail "--version: the no-lane note was printed at a launch that wanted no lane"; assertion
 

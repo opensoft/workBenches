@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Profile launches use the newest locally installed native Claude Code binary.
 set -euo pipefail
+unset CLAUDE_CODE_EFFORT_LEVEL
 
 # Count the full suite, including native-selection and no-lane assertions.
 assertions=0
@@ -378,7 +379,7 @@ has_line() { grep -Fxq -- "$1" "$test_root/$2"; }
 stderr_count() { grep -cF -- "$1" "$test_root/stderr.log" || true; }
 stderr_lines() { wc -l < "$test_root/stderr.log" | tr -d ' '; }
 bare=("$fake_bin/pclaude" run team002 --resume fixture-session)
-session_args='--allow-dangerously-skip-permissions --dangerously-skip-permissions --permission-mode bypassPermissions --resume fixture-session'
+session_args='--allow-dangerously-skip-permissions --dangerously-skip-permissions --permission-mode bypassPermissions --effort xhigh --resume fixture-session'
 
 # VERIFIED. The session starts on the absolute path the resolver printed, not
 # the image copy PATH finds first; the resolver's own line is the launch's one

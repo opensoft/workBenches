@@ -786,8 +786,18 @@ launched since, because the launcher writes the entry on a profile's NEXT launch
 rather than into all of them at once. A workstation whose copy predates that
 merge still fails the probe and still, correctly, ensures nothing.
 
-Profile launches default to
-`xhigh` effort and always start Claude with `bypassPermissions` plus
+Conversation launches through `pclaude` and `lclaude` explicitly pass
+`--effort xhigh` when no effort override is supplied, including resume and
+print-mode launches. This ensures the startup default on models that ignore
+the legacy top-level user `effortLevel` setting. An explicit `--effort VALUE`
+or `--effort=VALUE`, a nonempty inherited `CLAUDE_CODE_EFFORT_LEVEL`, or the
+profile's `env.CLAUDE_CODE_EFFORT_LEVEL` suppresses the fallback. For example,
+`pclaude team02k --effort max` preserves max. Only CLI and effort-environment
+overrides opt out of this launcher default; other saved model/settings effort
+preferences are not parsed. Login, status, and utility commands receive no new
+effort flag. Existing model/effort settings and running sessions are unchanged.
+
+Profile launches always start Claude with `bypassPermissions` plus
 `--dangerously-skip-permissions` (the most permissive Claude Code mode). The
 launcher also passes `--allow-dangerously-skip-permissions`, keeping bypass in
 the in-session Shift+Tab mode cycle if the user temporarily selects another
