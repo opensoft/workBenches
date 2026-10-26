@@ -254,10 +254,16 @@ class RuntimeCompatibilityTests(unittest.TestCase):
                                          kind + '-root', str(base)], text=True, capture_output=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(result.stdout, str(base / 'openbenches') + '\n')
-        result = subprocess.run([sys.executable, str(ROOT / 'scripts/openbenches_compat.py'), 'capabilities'],
-                                text=True, capture_output=True)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, 'openbenches-config-root-v1\n')
+        for arguments in (['capabilities'], ['capability', 'openbenches-config-root-v1']):
+            with self.subTest(arguments=arguments):
+                result = subprocess.run([sys.executable, str(ROOT / 'scripts/openbenches_compat.py'), *arguments],
+                                        text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, 'openbenches-config-root-v1\n')
+        result = subprocess.run([sys.executable, str(ROOT / 'scripts/openbenches_compat.py'),
+                                 'capability', 'unsupported-capability'], text=True, capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, '')
 
     def test_selected_root_drives_profile_launchers_and_writes_without_legacy_access(self):
         config = self.home / '.config'

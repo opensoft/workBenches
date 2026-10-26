@@ -63,15 +63,21 @@ def data_root(data_home=None, *, environ=None):
 
 
 def main(argv=None):
+    capabilities = ('openbenches-config-root-v1',)
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='command', required=True)
+    capability = commands.add_parser('capability')
+    capability.add_argument('name', choices=capabilities)
     commands.add_parser('capabilities')
     for kind in ('config', 'cache', 'data'):
         command = commands.add_parser(kind + '-root')
         command.add_argument('base', nargs='?', type=Path)
     args = parser.parse_args(argv)
+    if args.command == 'capability':
+        print(args.name)
+        return 0
     if args.command == 'capabilities':
-        print('openbenches-config-root-v1')
+        print('\n'.join(capabilities))
         return 0
     kind = args.command.removesuffix('-root')
     print(state_root(kind, args.base))
