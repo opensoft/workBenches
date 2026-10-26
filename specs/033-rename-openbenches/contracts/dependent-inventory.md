@@ -20,9 +20,18 @@ Status values: `pending`, `in-progress`, `ready`, `landed`, `verified`, `blocked
 | phpBench | Checkout repository field only; preserve checker commit | Immediate slug sweep | pending |
 | Opensoft-Tenant / AI-Credentials | Owner-led provider/path compatibility review without exposing inventories or payloads | Before fresh roots | landed — Opensoft-Tenant#240 merged as `112508f`; AI-Credentials#3 merged as `4aacee76`; 51 synthetic checks and final Codex CLI review pass at `1e87cd3`, without real credential access |
 | openWorkBenchesCli | Update current extraction-source links after cutover; do not consolidate the family | Immediate slug sweep | pending |
-| GitHub repository/settings | Controlled admin rename; description/topics/ruleset display; verify org rules and environments | Gated cutover | in-progress — canonical cutover `af155c8` reviewed and pushed without a PR; 21 transport + 19 installer tests and strict OpenSpec validation pass; admin rename remains gated |
+| GitHub repository/settings | Controlled admin rename; description/topics/ruleset display; verify org rules and environments | Gated cutover | in-progress — T007 approved on 2026-10-26; canonical cutover `8543e17` is pushed without a PR; T008 administrative rename is next |
 | Release/QA runners | Dual labels, environment aliases, config fallback; pause only at approved cutover window | Runtime compatibility | pending |
 | openWorkBenches App/Service/assembly | No implementation dependency detected; document product boundary only | Not required | not-required |
+
+## T007 authorized cutover evidence
+
+- Brett Heap explicitly approved the administrative rename on 2026-10-26: "approved, change the name". No release publication was authorized.
+- At 2026-10-26T10:59:41Z, `opensoft/openBenches` returned HTTP 404. The source remained repository ID `1072217222`, `opensoft/workBenches`, with protected `main` at `409b75385b85ae417a0b89b5a78d77aa64c0d2fc`.
+- Remote `main` and `033-rename-openbenches-cutover` matched the reviewed `409b753` base and `8543e172a1382e1615fcfd36673be69e047cb597` head. Release guards at `d51a19b44d73885f03e79ca0395e46409d4a04ad` and `832b8b4c0af4420ec9130fea8b513fb9692726dc` were unchanged.
+- Remote `main`, `release/1.6.0`, and `release/1.7.0` each allowed publication only from the exact old/new repository pair. The cutover workflows contained no hosted-Action `uses:` reference to either repository.
+- No active workflow runs remained. `GitHub QA session renewal and team authorization` (391043951) and `Release validation` (389947512) were disabled for the cutover window and confirmed `disabled_manually`; the existing nightly QA variable was `false`.
+- The seven naming-contract checks and strict OpenSpec validation passed in `py-bench`. Existing repository rulesets, organization rulesets, environments, Actions permissions, release IDs, and tag targets were recorded for post-cutover comparison without reading secret payloads.
 
 ## Cutover evidence required
 
