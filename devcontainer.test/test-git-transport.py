@@ -72,12 +72,12 @@ sys.exit(2)
         self.clones = [call for call in self.calls if call["args"][:1] == ["clone"]]
         return result
 
-    def clone(self, url="https://github.com/opensoft/workBenches.git", *options):
+    def clone(self, url="https://github.com/opensoft/openBenches.git", *options):
         return self.run_bootstrap("--clone", url, self.dest, *options)
 
     def test_working_ssh_preferred_even_for_https_input(self):
         self.assertEqual(self.clone().returncode, 0)
-        self.assertEqual(self.clones[0]["args"][-2], "git@github.com:opensoft/workBenches.git")
+        self.assertEqual(self.clones[0]["args"][-2], "git@github.com:opensoft/openBenches.git")
         probe = next(call for call in self.calls if call["args"][0] == "ls-remote")
         self.assertEqual(probe["args"][-1], "HEAD")
         for option in ("BatchMode=yes", "ConnectTimeout=5", "StrictHostKeyChecking=yes"):
@@ -86,16 +86,22 @@ sys.exit(2)
 
     def test_missing_ssh_access_falls_back_to_https(self):
         self.env["TEST_PROBE_STATUS"] = "128"
+        self.assertEqual(self.clone("git@github.com:opensoft/openBenches.git").returncode, 0)
+        self.assertEqual(self.clones[0]["args"][-2], "https://github.com/opensoft/openBenches.git")
+        self.assertEqual(self.clones[0]["prompt"], "0")
+        self.assertIn("url.https://github.com/opensoft/openBenches.git.insteadOf=https://github.com/opensoft/openBenches.git", self.clones[0]["config"])
+
+    def test_legacy_repository_keeps_ssh_to_https_fallback(self):
+        self.env["TEST_PROBE_STATUS"] = "128"
         self.assertEqual(self.clone("git@github.com:opensoft/workBenches.git").returncode, 0)
         self.assertEqual(self.clones[0]["args"][-2], "https://github.com/opensoft/workBenches.git")
-        self.assertEqual(self.clones[0]["prompt"], "0")
         self.assertIn("url.https://github.com/opensoft/workBenches.git.insteadOf=https://github.com/opensoft/workBenches.git", self.clones[0]["config"])
 
     def test_ssh_clone_failure_retries_https_with_clone_options(self):
         self.env["TEST_SSH_CLONE_STATUS"] = "128"
-        self.assertEqual(self.clone("ssh://git@github.com/opensoft/workBenches", "--depth", "1").returncode, 0)
+        self.assertEqual(self.clone("ssh://git@github.com/opensoft/openBenches", "--depth", "1").returncode, 0)
         self.assertEqual(len(self.clones), 2)
-        self.assertTrue(self.clones[1]["args"][-2].startswith("https://github.com/"))
+        self.assertEqual(self.clones[1]["args"][-2], "https://github.com/opensoft/openBenches.git")
         self.assertEqual(self.clones[1]["args"][1:3], ["--depth", "1"])
 
     def test_custom_ssh_command_is_preserved(self):
@@ -229,8 +235,17 @@ printf 'username=fixture-account\\npassword=fixture-private-token\\n'
         self.assertNotEqual(self.clone().returncode, 0)
         self.assertEqual(marker.read_text(), "keep")
 
+    def test_bootstrap_defaults_to_canonical_repository_and_destination(self):
+        result = self.run_bootstrap()
+        destination = self.root / "Projects/openBenches"
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.clones[0]["args"][-2:], ["git@github.com:opensoft/openBenches.git", str(destination)])
+        self.assertIn("Cloning from git@github.com:opensoft/openBenches.git", result.stderr)
+        self.assertIn(f"Cloned openBenches to {destination}.", result.stdout)
+
     def test_bootstrap_can_clone_and_run_setup(self):
         self.assertEqual(self.run_bootstrap("--directory", self.dest, "--branch", "review", "--setup").returncode, 0)
+        self.assertEqual(self.clones[0]["args"][-2], "git@github.com:opensoft/openBenches.git")
         self.assertIn("--branch", self.clones[0]["args"])
         self.assertEqual((self.root / "setup-ran").read_text(), "setup")
 

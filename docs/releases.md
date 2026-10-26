@@ -79,7 +79,7 @@ actors. Creating a new version tag remains allowed.
 Once the tag has been published:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/opensoft/workBenches/v1.5.0/bootstrap.sh -o workbenches-bootstrap.sh
+curl -fsSL https://raw.githubusercontent.com/opensoft/openBenches/v1.5.0/bootstrap.sh -o workbenches-bootstrap.sh
 bash workbenches-bootstrap.sh --branch v1.5.0 --setup
 ```
 

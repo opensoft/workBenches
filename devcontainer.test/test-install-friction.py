@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Source compatibility and first-start lifecycle regressions, no real credentials."""
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -199,6 +200,117 @@ class ImageTests(unittest.TestCase):
         row={'Os':'linux','Architecture':'amd64','Config':{'Labels':{shared.LABEL:'recipe','io.workbenches.parent':'old'}}}
         self.assertFalse(shared.compatible(row,'dev','recipe','linux/amd64','new'))
         self.assertTrue(shared.compatible(row,'dev','recipe','linux/amd64','old'))
+
+    def release_manifest(self, digest):
+        return {'schemaVersion':1,'images':{'base':{'linux/amd64':{
+            'sourceHash':shared.fingerprint('base'),
+            'image':shared.REGISTRIES['base']+'@sha256:'+digest,
+        }}}}
+
+    def release_url(self, repository):
+        return f'https://github.com/{repository}/releases/download/{shared.release_tag()}/shared-images.json'
+
+    def exercise_remote(self, responses, fail_pull=False):
+        calls=[]
+        source=shared.fingerprint('base')
+        row={'Id':'sha256:config','Os':'linux','Architecture':'amd64','Config':{'Labels':{shared.LABEL:source}}}
+        def command(argv, **kwargs):
+            calls.append((argv,kwargs))
+            if argv[1]=='context': return subprocess.CompletedProcess(argv,0,'unix:///test/docker.sock','')
+            if argv[1]=='info': return subprocess.CompletedProcess(argv,0,'linux/x86_64','')
+            return subprocess.CompletedProcess(argv,1 if fail_pull and argv[1]=='pull' else 0)
+        def download(url, timeout):
+            self.assertEqual(timeout,8)
+            repository=url.split('github.com/',1)[1].split('/releases/',1)[0]
+            self.assertIn(repository,responses)
+            outcome=responses[repository]
+            if isinstance(outcome,BaseException): raise outcome
+            if isinstance(outcome,dict): outcome=json.dumps(outcome).encode()
+            return io.BytesIO(outcome)
+        def inspect(image):
+            return None if image==shared.TAGS['base'] else row
+        with patch.dict(os.environ, {'WORKBENCHES_BUILD_LOCAL':'0'}), \
+             patch.object(shared.subprocess,'run',side_effect=command), \
+             patch.object(shared,'inspect',side_effect=inspect), \
+             patch.object(shared.urllib.request,'urlopen',side_effect=download) as network:
+            os.environ.pop('WORKBENCHES_IMAGE_MANIFEST',None)
+            code=shared.ensure('base')
+        urls=[call.args[0] for call in network.call_args_list]
+        return code,urls,calls
+
+    def test_default_lookup_uses_valid_canonical_manifest_without_fallback_or_merge(self):
+        canonical=self.release_manifest('a'*64)
+        legacy=self.release_manifest('b'*64)
+        code,urls,calls=self.exercise_remote({
+            'opensoft/openBenches':canonical,
+            'opensoft/workBenches':legacy,
+        })
+        self.assertEqual(code,0)
+        self.assertEqual(urls,[self.release_url('opensoft/openBenches')])
+        pull=next(x for x in calls if x[0][1]=='pull')
+        self.assertEqual(pull[0][-1],canonical['images']['base']['linux/amd64']['image'])
+        self.assertIn('DOCKER_CONFIG',pull[1]['env'])
+
+    def test_default_lookup_falls_back_to_legacy_for_an_old_release(self):
+        canonical_url=self.release_url('opensoft/openBenches')
+        legacy=self.release_manifest('b'*64)
+        code,urls,calls=self.exercise_remote({
+            'opensoft/openBenches':shared.urllib.error.HTTPError(canonical_url,404,'Not Found',{},None),
+            'opensoft/workBenches':legacy,
+        })
+        self.assertEqual(code,0)
+        self.assertEqual(urls,[canonical_url,self.release_url('opensoft/workBenches')])
+        pull=next(x for x in calls if x[0][1]=='pull')
+        self.assertEqual(pull[0][-1],legacy['images']['base']['linux/amd64']['image'])
+
+    def test_unusable_canonical_manifest_falls_back_without_relaxing_validation(self):
+        legacy=self.release_manifest('b'*64)
+        cases={
+            'schema':{'schemaVersion':2,'images':{}},
+            'source':{'schemaVersion':1,'images':{'base':{'linux/amd64':{'sourceHash':'wrong','image':'bad'}}}},
+            'registry':{'schemaVersion':1,'images':{'base':{'linux/amd64':{
+                'sourceHash':shared.fingerprint('base'),'image':'evil.example/image@sha256:'+'a'*64,
+            }}}},
+            'size':b'x'*65537,
+            'list':b'[]',
+            'null':b'null',
+            'scalar':b'1',
+        }
+        for label,canonical in cases.items():
+            with self.subTest(case=label):
+                code,urls,calls=self.exercise_remote({
+                    'opensoft/openBenches':canonical,
+                    'opensoft/workBenches':legacy,
+                })
+                self.assertEqual(code,0)
+                self.assertEqual(urls,[self.release_url('opensoft/openBenches'),self.release_url('opensoft/workBenches')])
+                pulls=[x for x in calls if x[0][1]=='pull']
+                self.assertEqual(len(pulls),1)
+                self.assertEqual(pulls[0][0][-1],legacy['images']['base']['linux/amd64']['image'])
+
+    def test_non_object_manifests_from_both_repositories_use_local_build(self):
+        for payload in (b'[]',b'null',b'1'):
+            with self.subTest(payload=payload):
+                code,urls,calls=self.exercise_remote({
+                    'opensoft/openBenches':payload,
+                    'opensoft/workBenches':payload,
+                })
+                self.assertEqual(code,1)
+                self.assertEqual(urls,[self.release_url('opensoft/openBenches'),self.release_url('opensoft/workBenches')])
+                self.assertFalse(any(argv[1] in {'pull','tag'} for argv,_ in calls))
+
+    def test_valid_canonical_manifest_is_not_replaced_after_pull_failure(self):
+        canonical=self.release_manifest('a'*64)
+        legacy=self.release_manifest('b'*64)
+        code,urls,calls=self.exercise_remote({
+            'opensoft/openBenches':canonical,
+            'opensoft/workBenches':legacy,
+        },fail_pull=True)
+        self.assertEqual(code,1)
+        self.assertEqual(urls,[self.release_url('opensoft/openBenches')])
+        pull=next(x for x in calls if x[0][1]=='pull')
+        self.assertEqual(pull[0][-1],canonical['images']['base']['linux/amd64']['image'])
+        self.assertFalse(any(x[0][1]=='tag' for x in calls))
 
 class BenchTests(unittest.TestCase):
     def exercise(self, existing=False, raced=False, fail_check=False, builder=False, fail_build=False):
