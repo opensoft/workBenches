@@ -3,7 +3,7 @@
 openbenches_sync_dir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 openbenches_sync_compat="$openbenches_sync_dir/openbenches-compat.sh"
 [[ -f "$openbenches_sync_compat" ]] || openbenches_sync_compat="$openbenches_sync_dir/lib/openbenches-compat.sh"
-[[ -f "$openbenches_sync_compat" ]] || openbenches_sync_compat=/usr/local/share/openbenches/openbenches-compat.sh
+[[ -f "$openbenches_sync_compat" ]] || openbenches_sync_compat=/usr/local/share/workbenches/openbenches-compat.sh
 source "$openbenches_sync_compat"
 
 wb_sync_before() {

@@ -180,11 +180,15 @@ validate_entry() {
 }
 
 approved_profile_root() {
+    local root
     case "$1" in
         claude) printf '%s/profiles\n' "${CLAUDE_PROFILES_HOME:-$HOME/.claude-profiles}" ;;
         codex) printf '%s/profiles\n' "${CODEX_PROFILES_HOME:-${CHATGPT_PROFILES_HOME:-$HOME/.chatgpt-profiles}}" ;;
         pi) printf '%s/profiles\n' "${PI_PROFILES_HOME:-$HOME/.pi-profiles}" ;;
-        omniroute) printf '%s/opencode\n' "$(openbenches_resolve_env --sensitive CREDENTIALS_HOME "$(openbenches_config_root)/credentials")" ;;
+        omniroute)
+            root="$(openbenches_resolve_env --sensitive CREDENTIALS_HOME "$(openbenches_config_root)/credentials")" || return "$?"
+            printf '%s/opencode\n' "$root"
+            ;;
         *) return 1 ;;
     esac
 }
@@ -194,7 +198,7 @@ validate_restore_target() {
     local target="$2"
     local root root_real target_real expected_suffix current parent
 
-    root="$(approved_profile_root "$provider" || true)"
+    root="$(approved_profile_root "$provider")" || return "$?"
     [[ -n "$root" ]] || return 1
     case "$provider" in
         claude) expected_suffix='/.credentials.json' ;;

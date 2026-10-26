@@ -4,7 +4,7 @@ set -euo pipefail
 compat_dir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 compat_lib="$compat_dir/openbenches-compat.sh"
 [[ -f "$compat_lib" ]] || compat_lib="$compat_dir/lib/openbenches-compat.sh"
-[[ -f "$compat_lib" ]] || compat_lib=/usr/local/share/openbenches/openbenches-compat.sh
+[[ -f "$compat_lib" ]] || compat_lib=/usr/local/share/workbenches/openbenches-compat.sh
 source "$compat_lib"
 config_root="$(openbenches_config_root)"
 

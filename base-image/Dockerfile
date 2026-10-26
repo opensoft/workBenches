@@ -188,8 +188,7 @@ COPY files/lclaude /usr/local/bin/lclaude
 COPY files/codex-profile /usr/local/bin/codex-profile
 COPY files/opencode-profile /usr/local/bin/opencode-profile
 COPY files/workbenches-mcp-sync /usr/local/bin/workbenches-mcp-sync
-COPY --chmod=0644 files/company-profile-sync.sh /usr/local/share/workbenches/company-profile-sync.sh
-COPY --chmod=0644 files/openbenches-compat.sh /usr/local/share/openbenches/openbenches-compat.sh
+COPY --chmod=0644 files/company-profile-sync.sh files/openbenches-compat.sh /usr/local/share/workbenches/
 COPY files/provider-profile /usr/local/bin/provider-profile
 COPY files/pi-profile /usr/local/bin/pi-profile
 COPY files/claude-statusline-command.sh /usr/local/share/workbenches/claude/statusline-command.sh
