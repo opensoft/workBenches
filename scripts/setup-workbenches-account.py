@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import sys
 import tempfile
 import time
 import urllib.error
@@ -14,8 +15,9 @@ import urllib.parse
 import urllib.request
 import webbrowser
 
-ROOT = Path(os.environ.get('WORKBENCHES_ACCOUNT_ROOT', str(
-    Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'workbenches')))
+from openbenches_compat import EnvironmentConflict, config_root, environment_names, resolve_env
+
+ROOT = config_root()
 CONFIG = ROOT / 'account-provider.json'
 SESSION = ROOT / 'account-session.json'
 
@@ -88,8 +90,8 @@ def session_lock():
 
 def configuration():
     data = json.loads(CONFIG.read_text()) if CONFIG.exists() else {}
-    issuer = os.environ.get('WORKBENCHES_ACCOUNT_ISSUER', data.get('issuer', '')).rstrip('/')
-    client = os.environ.get('WORKBENCHES_ACCOUNT_CLIENT_ID', data.get('clientId', ''))
+    issuer = resolve_env('ACCOUNT_ISSUER', data.get('issuer', ''), sensitive=True).rstrip('/')
+    client = resolve_env('ACCOUNT_CLIENT_ID', data.get('clientId', ''), sensitive=True)
     if not issuer or not client:
         return None
     url(issuer)
@@ -107,6 +109,8 @@ def status():
             session = json.loads(SESSION.read_text())
             if session.get('issuer') == config['issuer'] and session.get('clientId') == config['clientId'] and session.get('expiresAt', 0) > time.time() and session.get('subject'):
                 return 'signed in'
+    except EnvironmentConflict:
+        raise
     except FileNotFoundError:
         pass
     except (OSError, ValueError, TypeError, AttributeError):
@@ -134,7 +138,7 @@ def login(config):
         if (parsed.scheme, parsed.netloc) != (origin.scheme, origin.netloc):
             raise ValueError('Account endpoints must use the configured server origin.')
         endpoints[name] = endpoint
-    offline = os.environ.get('WORKBENCHES_ACCOUNT_OFFLINE') == '1'
+    offline = resolve_env('ACCOUNT_OFFLINE', sensitive=True) == '1'
     scope = 'openid profile email offline_access' if offline else 'openid profile email'
     device = request(endpoints['device_authorization_endpoint'], {'client_id': config['clientId'], 'scope': scope})
     verification = url(device['verification_uri'])
@@ -189,7 +193,7 @@ def login(config):
             session['refreshToken'] = tokens['refresh_token']
         with session_lock():
             write_private(SESSION, session)
-        print('workBenches account signed in. AI tokens and vault permissions are configured separately.')
+        print('openBenches account signed in. AI tokens and vault permissions are configured separately.')
         return 0
     raise ValueError('Account approval timed out; rerun optional account setup to try again.')
 
@@ -199,11 +203,16 @@ def logout():
         raise ValueError('Account storage must not be a symlink.')
     with session_lock():
         SESSION.unlink(missing_ok=True)
-    print('Signed out of workBenches on this workstation.')
+    print('Signed out of openBenches on this workstation.')
     return 0
 
 
 def main():
+    global ROOT, CONFIG, SESSION
+    if any(name in os.environ for name in environment_names('ACCOUNT_ROOT')):
+        ROOT = Path(resolve_env('ACCOUNT_ROOT', str(config_root()), sensitive=True))
+        CONFIG = ROOT / 'account-provider.json'
+        SESSION = ROOT / 'account-session.json'
     parser = argparse.ArgumentParser(description=__doc__)
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument('--status', action='store_true')
@@ -216,7 +225,7 @@ def main():
         return 0
     config = configuration()
     if config is None:
-        print('Optional workBenches account: your organization must provide its Keycloak realm URL and public client ID.')
+        print('Optional openBenches account: your organization must provide its Keycloak realm URL and public client ID.')
         issuer = prompt('Realm HTTPS URL (Enter skips, Q cancels): ')
         if not issuer:
             print('Account setup skipped. Bench installation does not require an account.')
@@ -242,6 +251,9 @@ if __name__ == '__main__':
         raise SystemExit(main())
     except (KeyboardInterrupt, EOFError):
         raise SystemExit(130)
+    except EnvironmentConflict as error:
+        print(str(error), file=sys.stderr)
+        raise SystemExit(2)
     except (OSError, ValueError, KeyError, TypeError, urllib.error.URLError):
         print('Account sign-in needs attention. Check your Keycloak realm, public client, HTTPS access, and device-flow configuration. Installation can continue without an account.')
         raise SystemExit(1)

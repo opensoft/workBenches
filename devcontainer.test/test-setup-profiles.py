@@ -109,6 +109,60 @@ class ProfilesTests(unittest.TestCase):
         self.assertTrue(all('WORKBENCHES_ACCOUNT_ISSUER' not in call.kwargs['env'] for call in run.call_args_list))
         self.assertEqual(legacy.read_text(), 'preserve')
 
+    def test_ai_environment_dual_emits_identity_and_scrubs_every_alias(self):
+        inherited = {}
+        for prefix in ('OPENBENCHES_', 'WORKBENCHES_', 'WB_'):
+            inherited[prefix + 'IDENTITY_EMAIL'] = 'stale@example.invalid'
+            inherited[prefix + 'SELECTED_PROVIDERS'] = 'stale'
+            inherited[prefix + 'AUTH_ROUTE'] = 'stale'
+            inherited[prefix + 'AUTH_ROUTE_FILE'] = 'stale'
+        with patch.dict(os.environ, inherited):
+            env = ui.ai_environment('person@example.org', 'Person', 'personal')
+        for prefix in ('OPENBENCHES_', 'WORKBENCHES_'):
+            self.assertEqual(env[prefix + 'IDENTITY_EMAIL'], 'person@example.org')
+            self.assertEqual(env[prefix + 'IDENTITY_NAME'], 'Person')
+            self.assertEqual(env[prefix + 'IDENTITY_SCOPE'], 'personal')
+            for suffix in ('SELECTED_PROVIDERS', 'AUTH_ROUTE', 'AUTH_ROUTE_FILE'):
+                self.assertNotIn(prefix + suffix, env)
+        for suffix in ('IDENTITY_EMAIL', 'IDENTITY_NAME', 'IDENTITY_SCOPE',
+                       'SELECTED_PROVIDERS', 'AUTH_ROUTE', 'AUTH_ROUTE_FILE'):
+            self.assertNotIn('WB_' + suffix, env)
+
+    def test_profile_installers_use_only_the_selected_root(self):
+        manifest = {'version': 1, 'families': ['personal'], 'profiles': [{
+            'name': 'personal', 'email': 'person@example.org', 'family': 'personal',
+            'profilePath': 'personal/personal', 'aliases': [], 'providers': ['openai']}]}
+        for provider in ('codex', 'gemini', 'pi'):
+            with self.subTest(provider=provider):
+                home = self.directory / provider
+                config = home / '.config'
+                new = config / 'openbenches'
+                legacy = config / 'workbenches'
+                new.mkdir(parents=True)
+                legacy.mkdir(parents=True)
+                filename = {'codex': 'openai', 'gemini': 'gemini', 'pi': 'pi'}[provider] + '-profiles.json'
+                (new / filename).write_text(json.dumps(manifest))
+                (legacy / 'preserve').write_text('legacy')
+                env = dict(os.environ, HOME=str(home), XDG_CONFIG_HOME=str(config))
+                if provider == 'codex':
+                    env['CODEX_PROFILES_HOME'] = str(home / 'profiles')
+                    command = ['bash', str(ROOT / 'scripts/setup-codex-profiles.sh')]
+                elif provider == 'gemini':
+                    env['GEMINI_PROFILES_HOME'] = str(home / 'profiles')
+                    command = ['bash', str(ROOT / 'scripts/setup-provider-profiles.sh'),
+                               '--provider', 'gemini', '--manifest', str(new / filename)]
+                else:
+                    env['PI_PROFILES_HOME'] = str(home / 'profiles')
+                    command = ['bash', str(ROOT / 'scripts/setup-pi-profiles.sh')]
+                result = subprocess.run(command, env=env, text=True, capture_output=True, timeout=15)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual((legacy / 'preserve').read_text(), 'legacy')
+                self.assertTrue((home / 'profiles/profiles/personal/personal').is_dir())
+                if provider == 'codex':
+                    for alias in ('workbenches-mcp-sync', 'openbenches-mcp-sync'):
+                        self.assertEqual((home / '.local/bin' / alias).resolve(),
+                                         (ROOT / 'scripts/workbenches-mcp-sync').resolve())
+
     def test_github_identity_is_verified_and_only_metadata_saved(self):
         data = profiles.load(); profile = profiles.add_company(data, 'First', 'me@first.org')
         response = subprocess.CompletedProcess([], 0, json.dumps({'login': 'example-user', 'id': 123, 'unused': 'not-stored'}))

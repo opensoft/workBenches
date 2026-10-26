@@ -8,14 +8,20 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import importlib.util
 
 ROOT = Path(__file__).resolve().parents[1]
+COMPAT_SPEC = importlib.util.spec_from_file_location(
+    'openbenches_compat', ROOT / 'scripts/openbenches_compat.py')
+compat = importlib.util.module_from_spec(COMPAT_SPEC)
+COMPAT_SPEC.loader.exec_module(compat)
+cache_root = compat.cache_root
 
 try:
     import workbenches_host as host
 except ImportError:
     host = None
-    if os.environ.get('WORKBENCHES_HOST_RPC'):
+    if os.environ.get('WORKBENCHES_HOST_RPC') or os.environ.get('OPENBENCHES_HOST_RPC'):
         raise
 
 
@@ -24,7 +30,7 @@ def run(argv, **kwargs):
         # Bench scripts inspect native WSL/GPU/desktop paths. Keep those scripts
         # on the workstation, while their four setup commands use the shims.
         env = dict(kwargs.get('env') or os.environ)
-        prefix = str(Path(os.environ.get('XDG_CACHE_HOME', str(Path.home() / '.cache'))) / 'workbenches/tools/bin')
+        prefix = str(cache_root() / 'tools/bin')
         if env.get('WORKBENCHES_REAL_DOCKER'):
             prefix = env['PATH'].split(os.pathsep)[0] + os.pathsep + prefix
         env['WORKBENCHES_COMMAND_PATH'] = prefix
@@ -73,7 +79,7 @@ def main():
     wave = ['bash', str(ROOT / 'scripts/wave-container-shell.sh'), '--workbenches-root', str(ROOT), '--shell', 'bash']
     with tempfile.TemporaryDirectory(prefix='workbenches-bench-') as directory:
         work = Path(directory)
-        override = Path(os.environ.get('WAVE_WORKBENCHES_COMPOSE_CACHE', str(Path.home() / '.cache/workbenches/wave-compose'))) / (container + '.override.yml')
+        override = Path(os.environ.get('WAVE_WORKBENCHES_COMPOSE_CACHE', str(cache_root() / 'wave-compose'))) / (container + '.override.yml')
         override.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         result = run(wave + ['--prepare-compose', str(override), container])
         if result.returncode:

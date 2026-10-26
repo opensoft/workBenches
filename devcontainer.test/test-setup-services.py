@@ -148,6 +148,7 @@ workbenches_tools_start 2>&1
             scripts = home / 'repo/scripts'
             (scripts / 'lib').mkdir(parents=True)
             shutil.copy(ROOT / 'scripts/tools-command.sh', scripts / 'tools-command.sh')
+            shutil.copy(ROOT / 'scripts/lib/openbenches-compat.sh', scripts / 'lib/openbenches-compat.sh')
             (scripts / 'lib/tools-container.sh').write_text('''workbenches_tools_state() { echo up; }
 workbenches_runtime_docker() { :; }
 ''')
@@ -158,12 +159,72 @@ while :; do sleep 0.05; done
 ''')
             env = dict(os.environ, HOME=str(home), XDG_CACHE_HOME=str(home / '.cache'),
                        WORKBENCHES_TOOLS_ROOT=str(scripts.parent), WORKBENCHES_TOOLS_CONTAINER='fixture')
-            result = subprocess.run(['bash', str(scripts / 'tools-command.sh'), 'python3', '--version'],
-                                    env=env, capture_output=True, text=True, timeout=6)
+            shim = home / 'shims/python3'
+            shim.parent.mkdir()
+            shim.symlink_to(scripts / 'tools-command.sh')
+            result = subprocess.run([str(shim), '--version'], env=env, capture_output=True, text=True, timeout=6)
             self.assertEqual(result.returncode, 0, result.stderr)
             with self.assertRaises(ProcessLookupError):
                 os.kill(int((home / 'broker-pid').read_text()), 0)
             self.assertFalse(list((home / '.cache/workbenches/tools/sessions').iterdir()))
+
+
+    def test_tools_shims_use_only_the_selected_cache_root(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            new = home / '.cache/openbenches'
+            legacy = home / '.cache/workbenches'
+            new.mkdir(parents=True)
+            legacy.mkdir()
+            output = self.shell(f'''
+HOME={str(home)!r}
+XDG_CACHE_HOME="$HOME/.cache"
+WORKBENCHES_TOOLS_ROOT={str(ROOT)!r}
+openbenches_tools_cache="$(openbenches_cache_root)"
+workbenches_vault_jobs
+workbenches_tools_use_shims
+''')
+            self.assertEqual(output.splitlines()[0], str(new / 'vault/jobs'))
+            self.assertTrue((new / 'tools/bin/python3').is_symlink())
+            self.assertFalse((legacy / 'tools').exists())
+
+    def test_wave_prepare_compose_uses_only_selected_config_and_cache_roots(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            new = home / '.config/openbenches'
+            legacy = home / '.config/workbenches'
+            new.mkdir(parents=True)
+            legacy.mkdir()
+            (legacy / 'preserve').write_text('legacy')
+            (home / '.claude.json').write_text('{}\n')
+            (home / '.cache/openbenches').mkdir(parents=True)
+            (home / '.cache/workbenches').mkdir()
+            fake_bin = home / 'bin'
+            fake_bin.mkdir()
+            docker = fake_bin / 'docker'
+            docker.write_text('#!/bin/bash\nexit 1\n')
+            docker.chmod(0o755)
+            output = home / 'override/compose.yml'
+            output.parent.mkdir()
+            env = dict(os.environ, HOME=str(home), USER='fixture', XDG_CONFIG_HOME=str(home / '.config'),
+                       XDG_CACHE_HOME=str(home / '.cache'), XDG_DATA_HOME=str(home / '.local/share'),
+                       PATH=str(fake_bin) + os.pathsep + os.environ['PATH'])
+            command = ['bash', str(ROOT / 'scripts/wave-container-shell.sh'),
+                       '--openbenches-root', str(ROOT), '--prepare-compose', str(output), 'py-bench']
+            result = subprocess.run(command, env=env, text=True, capture_output=True, timeout=15)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            contents = output.read_text()
+            self.assertIn(f'- {new}:/home/fixture/.config/openbenches:ro', contents)
+            self.assertNotIn(str(legacy), contents)
+            self.assertTrue(output.is_file())
+            self.assertFalse((home / '.cache/workbenches/wave-compose').exists())
+            self.assertEqual((legacy / 'preserve').read_text(), 'legacy')
+            conflict = subprocess.run(['bash', str(ROOT / 'scripts/wave-container-shell.sh'),
+                                       '--workbenches-root', str(ROOT), '--openbenches-root', str(home / 'other'),
+                                       '--prepare-compose', str(output), 'py-bench'],
+                                      env=env, text=True, capture_output=True, timeout=15)
+            self.assertEqual(conflict.returncode, 2)
+            self.assertIn('Conflicting old/new checkout root flags', conflict.stderr)
 
 
 if __name__ == '__main__':

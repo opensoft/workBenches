@@ -7,7 +7,12 @@ sync_lib="$sync_dir/company-profile-sync.sh"
 [[ -f "$sync_lib" ]] || sync_lib=/usr/local/share/workbenches/company-profile-sync.sh
 if [[ -f "$sync_lib" ]]; then source "$sync_lib"; else wb_sync_before() { :; }; wb_sync_after_login() { :; }; fi
 
-manifest="${OPENCODE_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/opencode-profiles.json}"
+compat_lib="$sync_dir/openbenches-compat.sh"
+[[ -f "$compat_lib" ]] || compat_lib="$sync_dir/lib/openbenches-compat.sh"
+[[ -f "$compat_lib" ]] || compat_lib=/usr/local/share/openbenches/openbenches-compat.sh
+source "$compat_lib"
+config_root="$(openbenches_config_root)"
+manifest="${OPENCODE_PROFILES_MANIFEST:-$config_root/opencode-profiles.json}"
 base="${OPENCODE_PROFILES_HOME:-$HOME/.opencode-profiles}"
 last_profile_file="${OPENCODE_LAST_PROFILE_FILE:-${XDG_STATE_HOME:-$HOME/.local/state}/workbenches/opencode-last-profile}"
 default_profile="${OPENCODE_DEFAULT_PROFILE:-max-002}"

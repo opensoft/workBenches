@@ -2,8 +2,10 @@
 set -euo pipefail
 umask 077
 
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$repo_dir/scripts/lib/openbenches-compat.sh"
 # User-local fallback for machines without Docker; no system Python changes.
-tool_dir="${XDG_DATA_HOME:-$HOME/.local/share}/workbenches/tools/azure-cli"
+tool_dir="$(openbenches_data_root)/tools/azure-cli"
 if [[ -x "$tool_dir/bin/az" ]]; then
     echo "Azure CLI is already installed at $tool_dir/bin/az"
     exit 0

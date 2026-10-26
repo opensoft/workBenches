@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 import tempfile
@@ -141,6 +142,17 @@ class AccountTests(unittest.TestCase):
                 account.login(self.config)
             self.assertEqual('refreshToken' in json.loads(account.SESSION.read_text()), offline)
             self.assertEqual('offline_access' in request.call_args_list[1].args[1]['scope'], offline)
+
+    def test_conflicting_sensitive_aliases_refuse_without_leaking_values(self):
+        env = dict(os.environ, OPENBENCHES_ACCOUNT_ISSUER='https://new.example/realm',
+                   WORKBENCHES_ACCOUNT_ISSUER='https://old.example/realm')
+        result = subprocess.run([sys.executable, str(ROOT / 'scripts/setup-workbenches-account.py'), '--status'],
+                                env=env, text=True, capture_output=True, timeout=5)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('OPENBENCHES_ACCOUNT_ISSUER and WORKBENCHES_ACCOUNT_ISSUER differ', result.stderr)
+        self.assertNotIn('new.example', result.stderr)
+        self.assertNotIn('old.example', result.stderr)
+        self.assertNotIn('Traceback', result.stderr)
 
     def test_quit_does_not_write_provider_settings(self):
         with patch('builtins.input', return_value='Q'), self.assertRaises(SystemExit) as error:

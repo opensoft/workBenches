@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 """Validate the approved openBenches naming and dependent compatibility contracts."""
 from pathlib import Path
+import json
+import os
 import re
+import subprocess
+import sys
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'scripts'))
+import openbenches_compat as compat
 NAMING = ROOT / 'specs/033-rename-openbenches/contracts/naming-contract.md'
 DEPENDENTS = ROOT / 'specs/033-rename-openbenches/contracts/dependent-inventory.md'
 
@@ -178,6 +185,132 @@ class DependentInventoryTests(unittest.TestCase):
                 match = re.match(r'^(`?)([a-z-]+)\1(?:\s|$)', row[3])
                 self.assertIsNotNone(match, f'Malformed status/evidence cell: {row[3]!r}')
                 self.assertIn(match[2], vocabulary)
+
+
+class RuntimeCompatibilityTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.home = Path(self.temporary.name)
+
+    def environment(self, **updates):
+        env = {key: value for key, value in os.environ.items()
+               if not key.startswith(('OPENBENCHES_', 'WORKBENCHES_', 'WB_'))}
+        env.update(HOME=str(self.home), XDG_CONFIG_HOME=str(self.home / '.config'),
+                   XDG_CACHE_HOME=str(self.home / '.cache'),
+                   XDG_DATA_HOME=str(self.home / '.local/share'), OPENCODE_BIN='/bin/true')
+        env.update(updates)
+        return env
+
+    def manifest(self, name):
+        return {'version': 1, 'families': ['personal'], 'profiles': [{
+            'name': name, 'email': name + '@example.invalid', 'family': 'personal',
+            'aliases': [], 'profilePath': 'personal/' + name, 'providers': ['claude']}]}
+
+    def test_environment_aliases_accept_equal_values_and_refuse_sensitive_conflicts(self):
+        self.assertEqual(compat.resolve_env('ACCOUNT_ISSUER', environ={}), '')
+        self.assertEqual(compat.resolve_env('ACCOUNT_ISSUER', environ={'WB_ACCOUNT_ISSUER': 'legacy'}), 'legacy')
+        self.assertEqual(compat.resolve_env('ACCOUNT_ISSUER', environ={
+            'OPENBENCHES_ACCOUNT_ISSUER': 'same', 'WORKBENCHES_ACCOUNT_ISSUER': 'same',
+            'WB_ACCOUNT_ISSUER': 'same'}, sensitive=True), 'same')
+        with self.assertRaisesRegex(compat.EnvironmentConflict,
+                                    'OPENBENCHES_ACCOUNT_ISSUER and WORKBENCHES_ACCOUNT_ISSUER') as raised:
+            compat.resolve_env('ACCOUNT_ISSUER', environ={
+                'OPENBENCHES_ACCOUNT_ISSUER': 'new-secret',
+                'WORKBENCHES_ACCOUNT_ISSUER': 'old-secret'}, sensitive=True)
+        self.assertNotIn('new-secret', str(raised.exception))
+        self.assertNotIn('old-secret', str(raised.exception))
+        script = 'source "$1"; openbenches_resolve_env --sensitive ACCOUNT_ISSUER fallback'
+        result = subprocess.run(['bash', '-c', script, 'fixture', str(ROOT / 'scripts/lib/openbenches-compat.sh')],
+                                env=self.environment(WB_ACCOUNT_ISSUER='legacy'), text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, 'legacy\n')
+        result = subprocess.run(['bash', '-c', script, 'fixture', str(ROOT / 'scripts/lib/openbenches-compat.sh')],
+                                env=self.environment(OPENBENCHES_ACCOUNT_ISSUER='new', WORKBENCHES_ACCOUNT_ISSUER='old'),
+                                text=True, capture_output=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('environment conflict', result.stderr)
+        self.assertNotIn('new\n', result.stderr)
+        self.assertNotIn('old\n', result.stderr)
+
+    def test_state_root_matrix_and_capability_command(self):
+        for kind, variable, default in (
+                ('config', 'XDG_CONFIG_HOME', '.config'),
+                ('cache', 'XDG_CACHE_HOME', '.cache'),
+                ('data', 'XDG_DATA_HOME', '.local/share')):
+            with self.subTest(kind=kind):
+                base = self.home / kind
+                selector = getattr(compat, kind + '_root')
+                self.assertEqual(selector(base), base / 'workbenches')
+                (base / 'workbenches').mkdir(parents=True)
+                self.assertEqual(selector(base), base / 'workbenches')
+                (base / 'openbenches').mkdir()
+                self.assertEqual(selector(base), base / 'openbenches')
+                (base / 'workbenches/sentinel').write_text('legacy')
+                (base / 'openbenches/sentinel').write_text('new')
+                self.assertEqual((base / 'workbenches/sentinel').read_text(), 'legacy')
+                self.assertEqual((base / 'openbenches/sentinel').read_text(), 'new')
+                result = subprocess.run([sys.executable, str(ROOT / 'scripts/openbenches_compat.py'),
+                                         kind + '-root', str(base)], text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, str(base / 'openbenches') + '\n')
+        result = subprocess.run([sys.executable, str(ROOT / 'scripts/openbenches_compat.py'), 'capabilities'],
+                                text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, 'openbenches-config-root-v1\n')
+
+    def test_selected_root_drives_profile_launchers_and_writes_without_legacy_access(self):
+        config = self.home / '.config'
+        new = config / 'openbenches'
+        legacy = config / 'workbenches'
+        new.mkdir(parents=True)
+        legacy.mkdir()
+        filenames = ('claude-profiles.json', 'openai-profiles.json', 'opencode-profiles.json',
+                     'gemini-profiles.json', 'pi-profiles.json')
+        for root, name in ((new, 'new-profile'), (legacy, 'legacy-profile')):
+            for filename in filenames:
+                (root / filename).write_text(json.dumps(self.manifest(name)))
+        commands = [
+            ROOT / 'base-image/files/claude-profile',
+            ROOT / 'base-image/files/codex-profile',
+            ROOT / 'base-image/files/opencode-profile',
+            ROOT / 'base-image/files/provider-profile',
+            ROOT / 'base-image/files/pi-profile',
+        ]
+        for command in commands:
+            with self.subTest(launcher=command.name):
+                env = self.environment(AI_PROFILE_PROVIDER='gemini')
+                result = subprocess.run(['bash', str(command), 'list'], env=env, text=True, capture_output=True, timeout=15)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn('new-profile', result.stdout)
+                self.assertNotIn('legacy-profile', result.stdout)
+        legacy_sentinel = legacy / 'preserve.json'
+        legacy_sentinel.write_text('preserve')
+        result = subprocess.run([sys.executable, str(ROOT / 'scripts/setup-profiles.py')],
+                                input='person@example.org\nn\nn\nb\n', text=True, capture_output=True,
+                                env=self.environment(), timeout=15)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue((new / 'profiles.json').is_file())
+        self.assertFalse((legacy / 'profiles.json').exists())
+        self.assertEqual(legacy_sentinel.read_text(), 'preserve')
+
+    def test_fresh_bootstrap_creates_canonical_roots_only_when_absent(self):
+        destination = self.home / 'checkout'
+        script = 'source "$1"; workbenches_clone() { mkdir -p "$2"; }; workbenches_bootstrap_main --directory "$2"'
+        result = subprocess.run(['bash', '-c', script, 'fixture', str(ROOT / 'bootstrap.sh'), str(destination)],
+                                env=self.environment(), text=True, capture_output=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        for base in (self.home / '.config', self.home / '.cache', self.home / '.local/share'):
+            self.assertTrue((base / 'openbenches').is_dir())
+            self.assertFalse((base / 'workbenches').exists())
+        (self.home / '.config/workbenches').mkdir()
+        (self.home / '.config/workbenches/preserve').write_text('legacy')
+        (self.home / '.config/openbenches').rmdir()
+        result = subprocess.run(['bash', '-c', script, 'fixture', str(ROOT / 'bootstrap.sh'), str(destination)],
+                                env=self.environment(WORKBENCHES_FROZEN='1'), text=True, capture_output=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse((self.home / '.config/openbenches').exists())
+        self.assertEqual((self.home / '.config/workbenches/preserve').read_text(), 'legacy')
 
 
 if __name__ == '__main__':

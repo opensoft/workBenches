@@ -58,6 +58,7 @@ jobs:
       - name: Recheck protected source before executing its publisher
         if: inputs.source_sha != ''
         env:
+          OPENBENCHES_SOURCE_READ_TOKEN: ${{ github.token }}
           WB_SOURCE_READ_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ inputs.source_sha }}
         run: |

@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# Setup script for workBenches
+# Setup script for openBenches
 # This script launches the interactive configuration manager
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/bootstrap.sh"
 if [[ "${1:-}" == --version ]]; then
-    printf 'workBenches v%s\n' "$(workbenches_version)"
+    printf 'openBenches v%s\n' "$(workbenches_version)"
     exit 0
 fi
 source "$SCRIPT_DIR/scripts/lib/setup-prerequisites.sh"
@@ -58,7 +58,7 @@ log_header "SETUP STARTED"
 # Clean up old logs (keep last 10)
 ls -t "$LOG_DIR"/setup-*.log 2>/dev/null | tail -n +11 | xargs rm -f 2>/dev/null
 
-# Install or update Wave Terminal widgets for this workBenches checkout.
+# Install or update Wave Terminal widgets for this openBenches checkout.
 # This is best-effort because Wave is a desktop convenience, not a build
 # prerequisite.
 install_wave_terminal_widgets() {
@@ -112,7 +112,7 @@ install_wave_terminal_widgets() {
         --projects-root "$projects_root" \
         --font-size "$font_size" \
         --wsl-connection "$wsl_connection" || {
-            echo "Wave Terminal widget setup failed; continuing workBenches setup."
+            echo "Wave Terminal widget setup failed; continuing openBenches setup."
             return 0
         }
 }
@@ -202,12 +202,12 @@ fi
 persist_npm_user_path
 
 # Estate commands (openRepoShape, openRepoTools, park, resume, status) come from
-# workBenches' own vendored pin and are placed by their own installers; see
+# openBenches' own vendored pin and are placed by their own installers; see
 # scripts/setup-estate-commands.sh. Best-effort, like the other host-user
 # steps here: it never fails setup.sh. WORKBENCHES_SKIP_ESTATE_COMMANDS=1 skips it.
 if [[ -n "$selected_bench_paths" ]] && [ -x "${SCRIPT_DIR}/scripts/setup-estate-commands.sh" ]; then
     log_header "ESTATE COMMANDS"
-    "${SCRIPT_DIR}/scripts/setup-estate-commands.sh" || echo "⚠ Estate command install skipped or failed; continuing workBenches setup."
+    "${SCRIPT_DIR}/scripts/setup-estate-commands.sh" || echo "⚠ Estate command install skipped or failed; continuing openBenches setup."
     echo ""
 fi
 

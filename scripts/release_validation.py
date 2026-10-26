@@ -16,6 +16,8 @@ import tarfile
 import time
 import uuid
 
+from openbenches_compat import resolve_env
+
 HERE = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST = HERE / 'config/release-tests.json'
 SHA = re.compile(r'[a-f0-9]{40}')
@@ -53,6 +55,9 @@ def load_manifest(path=DEFAULT_MANIFEST):
     if data.get('schemaVersion') != 1 or type(data.get('maxAgeSeconds')) is not int or not 60 <= data['maxAgeSeconds'] <= 172800:
         raise ValidationError('invalid_manifest')
     if not isinstance(data.get('suites'), dict) or not data['suites']: raise ValidationError('empty_manifest')
+    aliases = data.get('runnerLabelAliases', {})
+    if not isinstance(aliases, dict) or aliases and aliases != {'workbenches-qa': ['openbenches-qa']}:
+        raise ValidationError('invalid_runner_label_aliases')
     for name, suite in data['suites'].items():
         if not re.fullmatch(r'[a-z][a-z0-9-]{0,60}', name) or suite.get('kind') not in ('hosted', 'external'):
             raise ValidationError('invalid_suite')
@@ -120,7 +125,7 @@ def source(root, manifest_path, expected=None, ref=None):
 def context():
     return dict(runId=os.environ.get('GITHUB_RUN_ID', 'local'), attempt=os.environ.get('GITHUB_RUN_ATTEMPT', '1'),
                 repository=os.environ.get('GITHUB_REPOSITORY', 'local'),
-                automationCommit=os.environ.get('WB_AUTOMATION_SHA', git(HERE, 'rev-parse', 'HEAD')))
+                automationCommit=resolve_env('AUTOMATION_SHA', git(HERE, 'rev-parse', 'HEAD'), sensitive=True))
 
 
 def base_report(name, identity):
@@ -386,7 +391,7 @@ def run_suite(root, manifest_path, name, output, expected=None, ref=None, extern
     report = base_report(name, identity)
     try:
         if suite['kind'] == 'external':
-            run_external(root, suite, report, external_config)
+            run_external(root, suite, report, external_config or qa_config_path())
         else:
             project = 'wb-release-' + name + '-' + uuid.uuid4().hex[:10]
             replacements = {'{project}': project, '{root}': str(Path(root).resolve())}
@@ -522,11 +527,34 @@ def gate(root, manifest_path, reports_path, mode, expected=None, ref=None, run=N
                 publishable=mode == 'release' and not errors, errors=errors, required=list(needed), generatedAt=now)
 
 
+def runner_label_routes(suite, manifest):
+    routes = [list(suite['labels'])]
+    for legacy, aliases in manifest.get('runnerLabelAliases', {}).items():
+        if legacy not in suite['labels']:
+            continue
+        for alias in aliases:
+            routes.append([alias if label == legacy else label for label in suite['labels']])
+    return routes
+
+
+def qa_config_path(environ=None):
+    environment = os.environ if environ is None else environ
+    configured = resolve_env('QA_CONFIG_PATH', default=None, sensitive=True, environ=environment)
+    generic = environment.get('QA_CONFIG')
+    if configured and generic and configured != generic:
+        raise ValidationError('conflicting_qa_configuration')
+    if configured or generic:
+        return Path(configured or generic)
+    canonical = Path('/etc/openbenches/release-qa.json')
+    return canonical if canonical.is_file() else Path('/etc/workbenches/release-qa.json')
+
+
 def plan(root, manifest_path, mode, expected=None, ref=None):
     manifest = load_manifest(manifest_path); identity = source(root, manifest_path, expected, ref)
     suites = selected(manifest, identity['version'], mode)
     return dict(source=identity, hosted=[name for name, s in suites.items() if s['kind'] == 'hosted'],
-                external=[dict(suite=name, labels=s['labels']) for name, s in suites.items() if s['kind'] == 'external'])
+                external=[dict(suite=name, labels=s['labels'], labelRoutes=runner_label_routes(s, manifest))
+                          for name, s in suites.items() if s['kind'] == 'external'])
 
 
 def main():

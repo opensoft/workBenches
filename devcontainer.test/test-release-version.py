@@ -64,7 +64,7 @@ class ReleaseTests(unittest.TestCase):
         result = subprocess.run(['/bin/bash', str(self.root / 'setup.sh'), '--version'],
                                 env=dict(self.env, PATH=str(binary)), capture_output=True, text=True, timeout=3)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, 'workBenches v1.5.0\n')
+        self.assertEqual(result.stdout, 'openBenches v1.5.0\n')
         self.assertFalse((self.root / 'logs').exists())
 
     def test_supported_legacy_entrypoints_read_historical_locks(self):
@@ -88,7 +88,7 @@ class ReleaseTests(unittest.TestCase):
                 result = subprocess.run(['/bin/bash', str(self.root / 'setup.sh'), '--version'],
                                         env=self.env, capture_output=True, text=True, timeout=3)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(result.stdout, f'workBenches v{product}\n')
+                self.assertEqual(result.stdout, f'openBenches v{product}\n')
                 result = subprocess.run(['python3', str(self.root / 'scripts/release-workbenches.py'),
                                          'check', '--tag', tag], cwd=self.root, env=self.env,
                                         capture_output=True, text=True, timeout=10)

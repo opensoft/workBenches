@@ -130,7 +130,7 @@ draw_ui > "$1/repeated"
             files = {name: (Path(temporary) / name).read_bytes()
                      for name in ('first', 'unchanged', 'update', 'repeated')}
             self.assertEqual(files['first'].count(b'\x1b[2J'), 1)
-            version_header = f"workBenches v{(ROOT / 'VERSION').read_text().strip()}".encode()
+            version_header = f"openBenches v{(ROOT / 'VERSION').read_text().strip()}".encode()
             self.assertIn(version_header, files['first'])
             self.assertEqual(files['unchanged'], b'')
             self.assertEqual(files['repeated'], b'')

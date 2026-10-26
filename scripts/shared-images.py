@@ -11,8 +11,14 @@ import sys
 import tempfile
 import urllib.error
 import urllib.request
+import importlib.util
 
 ROOT = Path(__file__).resolve().parents[1]
+COMPAT_SPEC = importlib.util.spec_from_file_location(
+    'openbenches_compat', ROOT / 'scripts/openbenches_compat.py')
+compat = importlib.util.module_from_spec(COMPAT_SPEC)
+COMPAT_SPEC.loader.exec_module(compat)
+resolve_env = compat.resolve_env
 CONTEXTS = {'base': 'base-image', 'dev': 'devBenches/base-image'}
 TAGS = {'base': 'workbench-base:latest', 'dev': 'dev-bench-base:latest'}
 REGISTRIES = {'base': 'ghcr.io/opensoft/workbenches-base', 'dev': 'ghcr.io/opensoft/workbenches-dev-base'}
@@ -91,7 +97,7 @@ def manifest_image(payload, layer, platform, source, parent=None):
     return image
 
 def ensure(layer):
-    if os.environ.get('WORKBENCHES_BUILD_LOCAL') == '1':
+    if resolve_env('BUILD_LOCAL') == '1':
         print('Local build requested.')
         return 1
     info = subprocess.run(['docker', 'info', '--format', '{{.OSType}}/{{.Architecture}}'],
@@ -107,7 +113,7 @@ def ensure(layer):
         print(f'{TAGS[layer]} matches this source and platform; reusing it.')
         return 0
     try:
-        explicit = os.environ.get('WORKBENCHES_IMAGE_MANIFEST')
+        explicit = resolve_env('IMAGE_MANIFEST', sensitive=True)
         if explicit:
             image = manifest_image(Path(explicit).read_bytes(), layer, platform, source, parent)
         else:

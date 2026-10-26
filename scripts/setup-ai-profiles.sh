@@ -2,7 +2,8 @@
 set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/workbenches"
+source "$repo_dir/scripts/lib/openbenches-compat.sh"
+config_dir="$(openbenches_config_root)"
 
 usage() {
   echo "Usage: setup-ai-profiles.sh [--interactive|--apply-existing]"
@@ -18,20 +19,26 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-selected="${WORKBENCHES_SELECTED_PROVIDERS:-}"
-route="${WORKBENCHES_AUTH_ROUTE:-}"
+selected="$(openbenches_resolve_env SELECTED_PROVIDERS)"
+route="$(openbenches_resolve_env --sensitive AUTH_ROUTE)"
+route_output="$(openbenches_resolve_env --sensitive AUTH_ROUTE_FILE)"
 if [[ -n "$selected" && -t 0 && -t 1 && -z "$route" ]]; then
   route_file="$(mktemp)"
   trap 'rm -f "$route_file"' EXIT
   python3 "$repo_dir/scripts/setup-credential-recovery.py" --choose-route "$route_file"
   route="$(cat "$route_file")"
-  if [[ -n "${WORKBENCHES_AUTH_ROUTE_FILE:-}" ]]; then printf '%s' "$route" > "$WORKBENCHES_AUTH_ROUTE_FILE"; fi
+  if [[ -n "$route_output" ]]; then printf '%s' "$route" > "$route_output"; fi
 fi
 if [[ "$route" == vault:* ]]; then
   export WORKBENCHES_VAULT_SERVICE="${route#vault:}"
   route=vault
 fi
-export WORKBENCHES_AUTH_ROUTE="$route"
+if [[ -n "${OPENBENCHES_SELECTED_PROVIDERS+x}${WORKBENCHES_SELECTED_PROVIDERS+x}${WB_SELECTED_PROVIDERS+x}" ]]; then
+  export WORKBENCHES_SELECTED_PROVIDERS="$selected" OPENBENCHES_SELECTED_PROVIDERS="$selected"
+else
+  unset WORKBENCHES_SELECTED_PROVIDERS OPENBENCHES_SELECTED_PROVIDERS WB_SELECTED_PROVIDERS
+fi
+export WORKBENCHES_AUTH_ROUTE="$route" OPENBENCHES_AUTH_ROUTE="$route"
 if [[ "$mode" == interactive && "$route" != later && "$route" != existing && ( -z "$selected" || ",$selected," == *,openai,* || ",$selected," == *,claude,* || ",$selected," == *,pi,* ) ]]; then
   if [[ "$route" == vault ]]; then export WORKBENCHES_REQUIRE_PROFILE=1; fi
   python3 "$repo_dir/scripts/onboard-ai-profiles.py"

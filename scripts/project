@@ -2,7 +2,9 @@
 # workBenches owns discovery of its installation; openRepoProject owns the CLI.
 set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export WORKBENCHES_ROOT="${WORKBENCHES_ROOT:-$(dirname "$script_dir")}"
+source "$script_dir/lib/openbenches-compat.sh"
+WORKBENCHES_ROOT="$(openbenches_resolve_env --sensitive ROOT "$(dirname "$script_dir")")"
+export WORKBENCHES_ROOT OPENBENCHES_ROOT="$WORKBENCHES_ROOT"
 installer="$script_dir/setup-project-command.py"
 candidate_dirs=()
 
@@ -30,7 +32,7 @@ else
         candidate_dirs+=("$(dirname "$command_path")")
     fi
     discovery_file="$(expand_absolute_path \
-        "${WORKBENCHES_PROJECT_DISCOVERY_FILE:-$HOME/.config/workbenches/project-bin}" \
+        "$(openbenches_resolve_env --sensitive PROJECT_DISCOVERY_FILE "$(openbenches_config_root)/project-bin")" \
         WORKBENCHES_PROJECT_DISCOVERY_FILE)" || exit $?
     if [ -f "$discovery_file" ] && [ ! -L "$discovery_file" ]; then
         IFS= read -r discovered_dir < "$discovery_file" || true

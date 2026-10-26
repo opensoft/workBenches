@@ -160,12 +160,12 @@ def main():
         for service, label, _ in SERVICES:
             print(f"{service}: {label}")
         return 0
-    if os.environ.get("WORKBENCHES_SKIP_CREDENTIAL_RECOVERY") == "1":
+    if profile_credentials.resolve_env("SKIP_CREDENTIAL_RECOVERY") == "1":
         return 0
     if profile_credentials.selected_ready():
         print("Reusing existing credentials; no missing selected credentials to recover.")
         return 0
-    config = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "workbenches"
+    config = profile_credentials.config_root()
     manifests = {service: Path(os.environ.get("AI_CREDENTIAL_KV_MANIFEST", config / filename)) if service == "azure" else config / filename
                  for service, _, filename in SERVICES}
     guided_services = set()
@@ -174,11 +174,11 @@ def main():
         if not sys.stdin.isatty() or not sys.stdout.isatty():
             print("Vault selection requires an interactive terminal.", file=sys.stderr)
             return 1
-        compact_service = os.environ.get("WORKBENCHES_VAULT_SERVICE", "")
+        compact_service = profile_credentials.resolve_env("VAULT_SERVICE")
         if compact_service and compact_service not in manifests:
             raise ValueError("Unsupported credential service")
         print("AI credential recovery (Q cancels setup at any prompt).")
-        answer = "y" if os.environ.get("WORKBENCHES_AUTH_ROUTE") == "vault" else prompt("Do you have AI assistant tokens or profile credentials stored in a vault? [y/N]: ")
+        answer = "y" if profile_credentials.resolve_env("AUTH_ROUTE", sensitive=True) == "vault" else prompt("Do you have AI assistant tokens or profile credentials stored in a vault? [y/N]: ")
         if answer.lower() not in ("y", "yes"):
             print("Profiles can use native provider sign-in.")
             return 0

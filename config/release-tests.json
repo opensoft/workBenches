@@ -1,6 +1,9 @@
 {
   "schemaVersion": 1,
   "maxAgeSeconds": 86400,
+  "runnerLabelAliases": {
+    "workbenches-qa": ["openbenches-qa"]
+  },
   "suites": {
     "source": {
       "kind": "hosted",

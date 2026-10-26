@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import threading
 import webbrowser
 from dataclasses import dataclass
@@ -15,6 +16,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+from openbenches_compat import config_root
 
 HOME = Path.home()
 STATE_DIR = HOME / ".local/state/workbenches/credential-manager"
@@ -323,7 +326,7 @@ def main():
     parser.add_argument(
         "--source-repo",
         type=Path,
-        default=Path(os.environ.get("AI_HARNESS_ACCOUNT_REPO", Path.home() / ".config/workbenches")),
+        default=Path(os.environ.get("AI_HARNESS_ACCOUNT_REPO", config_root())),
         help="Local clone containing config/ai-harness-accounts.json or a legacy split manifest",
     )
     parser.add_argument("--port", type=int, default=8765)

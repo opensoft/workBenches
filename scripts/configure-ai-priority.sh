@@ -15,7 +15,9 @@ MAGENTA='\033[0;35m'
 NC='\033[0m' # No Color
 
 # Config file location
-CONFIG_DIR="${HOME}/.config/workbenches"
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$repo_dir/scripts/lib/openbenches-compat.sh"
+CONFIG_DIR="$(openbenches_config_root)"
 PRIORITY_CONFIG="${CONFIG_DIR}/ai-provider-priority.conf"
 
 # Default provider list (in default priority order)

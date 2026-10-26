@@ -64,7 +64,8 @@ jobs:
           INPUT_REF: ${{ inputs.ref }}
           EVENT: ${{ github.event_name }}
           WORKFLOW_REF: ${{ github.ref }}
-          QA_NIGHTLY: ${{ vars.WB_RELEASE_QA_NIGHTLY }}
+          OPENBENCHES_RELEASE_QA_NIGHTLY: ${{ vars.OPENBENCHES_RELEASE_QA_NIGHTLY || vars.WB_RELEASE_QA_NIGHTLY }}
+          WB_RELEASE_QA_NIGHTLY: ${{ vars.WB_RELEASE_QA_NIGHTLY || vars.OPENBENCHES_RELEASE_QA_NIGHTLY }}
         run: |
           python3 automation/scripts/release-qa-plan.py --root candidate --automation automation \
             --output "$RUNNER_TEMP/release-plan.json"
@@ -90,6 +91,7 @@ jobs:
           path: ${{ runner.temp }}/image-source-plan
       - id: source
         env:
+          OPENBENCHES_SOURCE_READ_TOKEN: ${{ github.token }}
           WB_SOURCE_READ_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ needs.plan.outputs.sha }}
         run: python3 automation/scripts/release-qa-image-source.py --plan "$RUNNER_TEMP/image-source-plan/release-plan.json" --commit "$SOURCE_SHA"
@@ -124,6 +126,7 @@ jobs:
       matrix: ${{ steps.ready.outputs.matrix }}
       has_ready: ${{ steps.ready.outputs.has_ready }}
     env:
+      OPENBENCHES_AUTOMATION_SHA: ${{ needs.plan.outputs.automation }}
       WB_AUTOMATION_SHA: ${{ needs.plan.outputs.automation }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -138,9 +141,12 @@ jobs:
       - id: ready
         name: Fail closed when protected workers/configuration are unavailable
         env:
+          OPENBENCHES_QA_INVENTORY_TOKEN: ${{ secrets.RELEASE_RUNNER_INVENTORY_TOKEN }}
           WB_QA_INVENTORY_TOKEN: ${{ secrets.RELEASE_RUNNER_INVENTORY_TOKEN }}
+          OPENBENCHES_SOURCE_READ_TOKEN: ${{ github.token }}
           WB_SOURCE_READ_TOKEN: ${{ github.token }}
-          WB_QA_CONFIGURED: ${{ vars.WB_QA_CONFIGURED }}
+          OPENBENCHES_QA_CONFIGURED: ${{ vars.OPENBENCHES_QA_CONFIGURED || vars.WB_QA_CONFIGURED }}
+          WB_QA_CONFIGURED: ${{ vars.WB_QA_CONFIGURED || vars.OPENBENCHES_QA_CONFIGURED }}
         run: |
           python3 automation/scripts/release-qa-preflight.py --plan "$RUNNER_TEMP/plan/release-plan.json" \
             --reports "$RUNNER_TEMP/blocked-evidence"
@@ -185,6 +191,7 @@ jobs:
     needs: [plan, image-source, images, fixtures, qa-preflight, qa, qa-watchdog]
     runs-on: ubuntu-24.04
     env:
+      OPENBENCHES_AUTOMATION_SHA: ${{ needs.plan.outputs.automation }}
       WB_AUTOMATION_SHA: ${{ needs.plan.outputs.automation }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262

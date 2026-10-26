@@ -11,6 +11,7 @@ import sys
 import tempfile
 
 from release_validation import ValidationError, read, failure_location, encrypt_fixture_diagnostics, NATIVE_CASES
+from openbenches_compat import resolve_env
 
 HERE = Path(__file__).resolve().parents[1]
 
@@ -67,7 +68,7 @@ def main():
     request = json.load(sys.stdin)
     kind = {'arch-native': 'arch', 'wsl-native': 'wsl'}.get(request['suite'])
     if not kind: raise ValidationError('unsupported_native_suite')
-    settings_path = Path(os.environ.get('WB_NATIVE_QA_SETTINGS', '/etc/workbenches/native-qa.json'))
+    settings_path = Path(resolve_env('NATIVE_QA_SETTINGS', '/etc/workbenches/native-qa.json', sensitive=True))
     if settings_path.is_symlink() or settings_path.stat().st_uid != 0 or settings_path.stat().st_mode & 0o022:
         raise ValidationError('root_owned_native_settings_required')
     settings = read(settings_path)
@@ -124,14 +125,14 @@ def main():
                 # failed command's encrypted diagnostic bytes.
                 if not diagnostic_snapshot.get('encryptedDiagnostics'):
                     diagnostic_snapshot.update(native_diagnostics(repo, report, output, request['suite'],
-                        Path(os.environ.get('WB_QA_DIAGNOSTICS_DIR', str(base / 'diagnostics'))),
+                        Path(resolve_env('QA_DIAGNOSTICS_DIR', str(base / 'diagnostics'), sensitive=True)),
                         os.environ.get('OPENBENCHES_QA_FAILURE_CERT_PEM')))
                 diagnostic.update(diagnostic_snapshot)
                 print('NATIVE_QA_FAILURE ' + json.dumps(diagnostic), file=sys.stderr, flush=True)
                 raise ValidationError('native_acceptance_failed')
         def fail_completion(reason):
             diagnostic = native_completion_diagnostics(reason, repo, report, request['suite'],
-                Path(os.environ.get('WB_QA_DIAGNOSTICS_DIR', str(base / 'diagnostics'))),
+                Path(resolve_env('QA_DIAGNOSTICS_DIR', str(base / 'diagnostics'), sensitive=True)),
                 os.environ.get('OPENBENCHES_QA_FAILURE_CERT_PEM'))
             diagnostic_snapshot.update(diagnostic)
             print('NATIVE_QA_FAILURE ' + json.dumps(diagnostic), file=sys.stderr, flush=True)

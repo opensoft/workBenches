@@ -7,7 +7,9 @@ import tempfile
 import time
 import uuid
 
-ROOT = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'workbenches'
+from openbenches_compat import config_root
+
+ROOT = config_root()
 STORE = ROOT / 'profiles.json'
 
 

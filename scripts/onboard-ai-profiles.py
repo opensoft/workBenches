@@ -15,6 +15,7 @@ import sys
 from typing import Any
 from urllib.parse import quote
 from setup_prompts import prompt as metadata_prompt, cancellation_signals, propagate_cancel
+from openbenches_compat import config_root, data_root, resolve_env
 
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
@@ -303,10 +304,10 @@ def interactive_answers() -> dict[str, Any]:
     if detected:
         print("Existing standard credential storage detected for: " + ", ".join(detected))
         print("It will be preserved in place and will not be copied into new profile homes.")
-    if os.environ.get("WORKBENCHES_REQUIRE_PROFILE") != "1" and not ask_yes_no("Set up separate AI profiles for this workstation now?", False):
+    if resolve_env("REQUIRE_PROFILE") != "1" and not ask_yes_no("Set up separate AI profiles for this workstation now?", False):
         return {"consent": False}
 
-    scope = ask("Profile ownership: personal, organization, or registry (advanced)", os.environ.get("WORKBENCHES_IDENTITY_SCOPE", "personal")).lower()
+    scope = ask("Profile ownership: personal, organization, or registry (advanced)", resolve_env("IDENTITY_SCOPE", "personal")).lower()
     if scope not in ("personal", "organization", "registry"):
         raise ValueError("choose personal, organization, or registry")
     registry_mode = scope == "registry"
@@ -314,17 +315,17 @@ def interactive_answers() -> dict[str, Any]:
         scope = ask("Registry profile ownership: personal or organization", "organization").lower()
         if scope not in ("personal", "organization"):
             raise ValueError("choose personal or organization")
-    selected = os.environ.get("WORKBENCHES_PROFILE_PROVIDERS", "all")
+    selected = resolve_env("PROFILE_PROVIDERS", "all")
     if not selected:
         selected = ask("AI provider for Pi profiles (claude,gpt,gemini,grok,glm)", "gpt")
     providers = parse_providers(selected)
-    email = ask("AI account login email", os.environ.get("WORKBENCHES_IDENTITY_EMAIL", ""))
+    email = ask("AI account login email", resolve_env("IDENTITY_EMAIL"))
     if not EMAIL_RE.match(email):
         raise ValueError("Enter a valid AI account login email.")
     companies = []
     personal_accounts = []
     if scope == "organization":
-        name = ask("Organization name", os.environ.get("WORKBENCHES_IDENTITY_NAME", company_name_from_email(email)))
+        name = ask("Organization name", resolve_env("IDENTITY_NAME", company_name_from_email(email)))
         companies = [{"name": name, "email": email, "githubOrg": "",
                       "providers": providers, "registry": "manual"}]
     else:
@@ -333,7 +334,7 @@ def interactive_answers() -> dict[str, Any]:
     personal_org = ""
     personal_registry = "manual"
     registry_requested = registry_mode or (
-        "WORKBENCHES_SELECTED_PROVIDERS" not in os.environ
+        resolve_env("SELECTED_PROVIDERS", default=None) is None
         and ask_yes_no("Use a GitHub credential registry (advanced)?", False)
     )
     if registry_requested:
@@ -512,12 +513,12 @@ def main() -> int:
     parser.add_argument(
         "--output-dir",
         type=pathlib.Path,
-        default=pathlib.Path(os.environ.get("XDG_CONFIG_HOME", pathlib.Path.home() / ".config")) / "workbenches",
+        default=config_root(),
     )
     parser.add_argument(
         "--registry-root",
         type=pathlib.Path,
-        default=pathlib.Path.home() / ".local/share/workbenches/registries",
+        default=data_root() / "registries",
     )
     args = parser.parse_args()
 
@@ -603,17 +604,19 @@ def main() -> int:
         args.output_dir.mkdir(parents=True, exist_ok=True)
         families = [slugify(company["name"]) for company in answers["companies"]]
         families.append("personal")
+        selected_configured = resolve_env("SELECTED_PROVIDERS", default=None) is not None
+        identity_scope = resolve_env("IDENTITY_SCOPE")
         for provider, filename in COMPOSER.PROVIDERS.items():
-            if not output[provider] and "WORKBENCHES_SELECTED_PROVIDERS" in os.environ:
+            if not output[provider] and selected_configured:
                 continue
             destination = args.output_dir / filename
-            if os.environ.get('WORKBENCHES_IDENTITY_SCOPE') and destination.is_file():
+            if identity_scope and destination.is_file():
                 existing = json.loads(destination.read_text())
                 existing_profiles = existing.get('profiles', [])
                 # Adding an identity must never replace another identity's AI profiles.
                 output[provider] = merge_identity_profiles(existing_profiles, output[provider])
                 families = list(dict.fromkeys([*existing.get('families', []), *families]))
-            if "WORKBENCHES_SELECTED_PROVIDERS" in os.environ and not os.environ.get('WORKBENCHES_IDENTITY_SCOPE') and destination.is_file():
+            if selected_configured and not identity_scope and destination.is_file():
                 existing = json.loads(destination.read_text())
                 if existing.get("profiles"):
                     print(f"Preserving configured {provider} profiles.")

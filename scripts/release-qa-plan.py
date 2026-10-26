@@ -6,6 +6,7 @@ import os
 import re
 from pathlib import Path
 from release_validation import ValidationError, atomic, git, plan
+from openbenches_compat import resolve_env
 
 
 def main():
@@ -17,7 +18,9 @@ def main():
     event = os.environ.get('EVENT')
     mode = 'ci'
     if event == 'workflow_dispatch': mode = os.environ['INPUT_MODE']
-    elif event == 'schedule': mode = 'release' if os.environ.get('QA_NIGHTLY') == 'true' else 'fixtures'
+    elif event == 'schedule':
+        nightly = resolve_env('RELEASE_QA_NIGHTLY', os.environ.get('QA_NIGHTLY', ''), sensitive=True)
+        mode = 'release' if nightly == 'true' else 'fixtures'
     workflow_ref = os.environ.get('WORKFLOW_REF', '')
     if event == 'push':
         if workflow_ref != 'refs/heads/main':

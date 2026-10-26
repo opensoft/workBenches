@@ -745,6 +745,62 @@ esac
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertLess(actions.read_text().index('--before-login'), actions.read_text().index('--after-login'))
 
+    def test_sync_aliases_share_one_selected_root_agent_and_lease(self):
+        home = self.root / 'sync-home'
+        config = home / '.config'
+        new = config / 'openbenches'
+        legacy = config / 'workbenches'
+        new.mkdir(parents=True)
+        legacy.mkdir(parents=True)
+        (legacy / 'preserve').write_text('legacy')
+        env = dict(os.environ, HOME=str(home), XDG_CONFIG_HOME=str(config))
+        install = subprocess.run(['bash', str(ROOT / 'scripts/credential-sync.sh'), '--install'],
+                                 env=env, text=True, capture_output=True, timeout=10)
+        self.assertEqual(install.returncode, 0, install.stdout + install.stderr)
+        old_alias = home / '.local/bin/workbenches-credential-sync'
+        new_alias = home / '.local/bin/openbenches-credential-sync'
+        self.assertEqual(old_alias.resolve(), new_alias.resolve())
+        self.assertTrue((new / 'company-sync-enabled').exists())
+        self.assertFalse((legacy / 'company-sync-enabled').exists())
+        leases = []
+        for alias in (old_alias, new_alias):
+            result = subprocess.run([str(alias), '--lease-path', str(home / 'synthetic.json')],
+                                    env=env, text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            leases.append(result.stdout.strip())
+        self.assertEqual(leases[0], leases[1])
+        self.assertTrue(leases[0].startswith(str(new / 'sync-leases') + '/'))
+        process = subprocess.Popen([str(new_alias), '--watch'], env=env,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            deadline = time.monotonic() + 5
+            while not (new / 'credential-sync-agent.json').exists() and process.poll() is None and time.monotonic() < deadline:
+                time.sleep(.02)
+            self.assertTrue((new / 'credential-sync-agent.json').exists())
+            second = subprocess.run([str(old_alias), '--watch'], env=env,
+                                    text=True, capture_output=True, timeout=10)
+            self.assertEqual(second.returncode, 3, second.stdout + second.stderr)
+            subprocess.run([str(new_alias), '--stop'], env=env, check=True, capture_output=True, timeout=5)
+            process.communicate(timeout=5)
+            self.assertEqual(process.returncode, 0)
+            self.assertFalse(read_json(new / 'credential-sync-agent.json')['running'])
+            self.assertFalse((legacy / 'credential-sync-agent.json').exists())
+            self.assertEqual((legacy / 'preserve').read_text(), 'legacy')
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate()
+        foreign_home = self.root / 'foreign-home'
+        foreign = foreign_home / '.local/bin/openbenches-credential-sync'
+        foreign.parent.mkdir(parents=True)
+        foreign.write_text('foreign')
+        foreign_env = dict(env, HOME=str(foreign_home), XDG_CONFIG_HOME=str(foreign_home / '.config'))
+        result = subprocess.run(['bash', str(ROOT / 'scripts/credential-sync.sh'), '--install'],
+                                env=foreign_env, text=True, capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(foreign.read_text(), 'foreign')
+        self.assertFalse((foreign_home / '.local/bin/workbenches-credential-sync').exists())
+
     def test_background_agent_stops_cleanly_and_records_missing_login(self):
         config_root = self.root / 'workbenches'
         company_id = 'company-' + 'a' * 32

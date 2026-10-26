@@ -50,7 +50,7 @@ echo "Building $CANONICAL_IMAGE..."
 docker build \
     --label "io.workbenches.source=$source_hash" \
     --label "io.workbenches.parent=$parent_id" \
-    --label "org.opencontainers.image.source=https://github.com/opensoft/workBenches" \
+    --label "org.opencontainers.image.source=https://github.com/opensoft/openBenches" \
     $([ "$NO_CACHE" = true ] && printf '%s\n' "--no-cache") \
     -t "$CANONICAL_IMAGE" \
     .

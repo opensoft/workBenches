@@ -1,14 +1,29 @@
 #!/usr/bin/env bash
 # Docker-only bootstrap for setup's Python, jq, Git and curl. No host packages.
-WORKBENCHES_TOOLS_ROOT="${WORKBENCHES_TOOLS_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
-WORKBENCHES_TOOLS_CONTAINER="${WORKBENCHES_TOOLS_CONTAINER:-workbenches-tools}"
-WORKBENCHES_TOOLS_IMAGE="${WORKBENCHES_TOOLS_IMAGE:-workbenches/tools:2026.10.15-v1}"
-WORKBENCHES_SERVICES_NETWORK="${WORKBENCHES_SERVICES_NETWORK:-workbenches-services-$(id -u)}"
-WORKBENCHES_VAULT_CONTAINER="${WORKBENCHES_VAULT_CONTAINER:-workbenches-vault}"
-WORKBENCHES_VAULT_IMAGE="${WORKBENCHES_VAULT_IMAGE:-workbenches/vault:2026.10.15-v1}"
+source "$(dirname "${BASH_SOURCE[0]}")/openbenches-compat.sh"
+openbenches_tools_default_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+for openbenches_suffix in TOOLS_ROOT TOOLS_CONTAINER TOOLS_IMAGE SERVICES_NETWORK VAULT_CONTAINER VAULT_IMAGE NATIVE_PATH DOCKER_ENDPOINT HOST_OS_LABEL; do
+    case "$openbenches_suffix" in
+        TOOLS_ROOT) openbenches_default="$openbenches_tools_default_root" ;;
+        TOOLS_CONTAINER) openbenches_default=workbenches-tools ;;
+        TOOLS_IMAGE) openbenches_default=workbenches/tools:2026.10.15-v1 ;;
+        SERVICES_NETWORK) openbenches_default="workbenches-services-$(id -u)" ;;
+        VAULT_CONTAINER) openbenches_default=workbenches-vault ;;
+        VAULT_IMAGE) openbenches_default=workbenches/vault:2026.10.15-v1 ;;
+        *) openbenches_default='' ;;
+    esac
+    if ! openbenches_value="$(openbenches_resolve_env --sensitive "$openbenches_suffix" "$openbenches_default")"; then
+        return 2
+    fi
+    printf -v "WORKBENCHES_$openbenches_suffix" '%s' "$openbenches_value"
+    printf -v "OPENBENCHES_$openbenches_suffix" '%s' "$openbenches_value"
+    export "WORKBENCHES_$openbenches_suffix" "OPENBENCHES_$openbenches_suffix"
+done
+unset openbenches_tools_default_root openbenches_suffix openbenches_default openbenches_value
+openbenches_tools_cache="$(openbenches_cache_root)"
 
 workbenches_vault_jobs() {
-    printf '%s/workbenches/vault/jobs\n' "${XDG_CACHE_HOME:-$HOME/.cache}"
+    printf '%s/vault/jobs\n' "$openbenches_tools_cache"
 }
 
 workbenches_vault_state() {
@@ -113,7 +128,8 @@ workbenches_pin_docker() {
     fi
     [[ "$endpoint" == unix:///* ]] || { echo 'Tools requires the selected local Docker engine.' >&2; return 1; }
     WORKBENCHES_DOCKER_ENDPOINT=$endpoint
-    export WORKBENCHES_DOCKER_ENDPOINT
+    OPENBENCHES_DOCKER_ENDPOINT=$endpoint
+    export WORKBENCHES_DOCKER_ENDPOINT OPENBENCHES_DOCKER_ENDPOINT
 }
 
 workbenches_docker_state() {
@@ -148,7 +164,7 @@ workbenches_tools_image_fingerprint() {
 
 workbenches_tools_fingerprint() {
     local checksum rest
-    IFS=' ' read -r checksum rest < <({ cksum "$WORKBENCHES_TOOLS_ROOT/tools-container/"{Dockerfile,workbenches_host.py,host-command}; printf '%s\n' 'runtime-v3' "$HOME" "$WORKBENCHES_TOOLS_ROOT" "${TMPDIR:-/tmp}" "${SSH_AUTH_SOCK:-}" "${XDG_CONFIG_HOME:-}" "${XDG_CACHE_HOME:-}" "${XDG_DATA_HOME:-}"; } | cksum)
+    IFS=' ' read -r checksum rest < <({ cksum "$WORKBENCHES_TOOLS_ROOT/tools-container/"{Dockerfile,workbenches_host.py,host-command}; printf '%s\n' 'runtime-v3' "$HOME" "$WORKBENCHES_TOOLS_ROOT" "$openbenches_tools_cache" "${TMPDIR:-/tmp}" "${SSH_AUTH_SOCK:-}" "${XDG_CONFIG_HOME:-}" "${XDG_CACHE_HOME:-}" "${XDG_DATA_HOME:-}"; } | cksum)
     printf '%s\n' "$checksum"
 }
 
@@ -203,7 +219,7 @@ workbenches_tools_start() {
         else
             socket_group="$(stat -c %g "$socket" 2>/dev/null || stat -f %g "$socket" 2>/dev/null)" || return 1
         fi
-        local identity_root="${XDG_CACHE_HOME:-$HOME/.cache}/workbenches/tools/identity"
+        local identity_root="$openbenches_tools_cache/tools/identity"
         (umask 077; mkdir -p "$identity_root") || return 1
         (umask 077
          { if [[ "$(id -u)" != 0 ]]; then printf 'root:x:0:0:root:/root:/bin/sh\n'; fi
@@ -267,16 +283,20 @@ workbenches_tools_activate() {
 workbenches_tools_use_shims() {
     [[ "${WORKBENCHES_TEST_NATIVE_TOOLS:-}" != 1 ]] || return 0
     WORKBENCHES_NATIVE_PATH="${WORKBENCHES_NATIVE_PATH:-$PATH}"
-    WORKBENCHES_TOOLS_BIN="${XDG_CACHE_HOME:-$HOME/.cache}/workbenches/tools/bin"
+    WORKBENCHES_TOOLS_BIN="$openbenches_tools_cache/tools/bin"
     mkdir -p "$WORKBENCHES_TOOLS_BIN" || return 1
     local tool
     for tool in python3 jq git curl; do
         ln -sf "$WORKBENCHES_TOOLS_ROOT/scripts/tools-command.sh" "$WORKBENCHES_TOOLS_BIN/$tool" || return 1
     done
+    OPENBENCHES_TOOLS_BIN="$WORKBENCHES_TOOLS_BIN"
+    OPENBENCHES_NATIVE_PATH="$WORKBENCHES_NATIVE_PATH"
     export WORKBENCHES_TOOLS_ROOT WORKBENCHES_TOOLS_CONTAINER WORKBENCHES_NATIVE_PATH WORKBENCHES_TOOLS_BIN
+    export OPENBENCHES_TOOLS_BIN OPENBENCHES_NATIVE_PATH
     WORKBENCHES_HOST_OS_LABEL="$(workbenches_setup_os)"
-    export WORKBENCHES_HOST_OS_LABEL
-    export WORKBENCHES_CONTAINER_TOOLS=1
+    OPENBENCHES_HOST_OS_LABEL="$WORKBENCHES_HOST_OS_LABEL"
+    export WORKBENCHES_HOST_OS_LABEL OPENBENCHES_HOST_OS_LABEL
+    export WORKBENCHES_CONTAINER_TOOLS=1 OPENBENCHES_CONTAINER_TOOLS=1
     case "$WORKBENCHES_HOST_OS_LABEL" in
         macOS*) export LANES_OS=macos; export BROWSER="${BROWSER:-open}" ;; Windows*) export LANES_OS=wsl ;; *) export LANES_OS=linux ;;
     esac

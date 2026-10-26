@@ -6,8 +6,9 @@ import time
 import uuid
 
 from company_sync import Client, SyncError, account_token, atomic, digest, lock, read_json, safe_path
+from openbenches_compat import config_root
 
-ROOT = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'workbenches'
+ROOT = config_root()
 
 
 def managed_path(value):

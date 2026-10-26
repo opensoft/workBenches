@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 import sys
 
+from openbenches_compat import config_root, resolve_env
+
 REPO = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location('credential_runtime', REPO / 'credential-container/credential_recovery.py')
 RUNTIME = importlib.util.module_from_spec(SPEC)
@@ -12,7 +14,7 @@ SPEC.loader.exec_module(RUNTIME)
 
 
 def entries(providers=None):
-    config = Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config')) / 'workbenches'
+    config = config_root()
     manifests = {'claude': ('claude', 'CLAUDE_PROFILES_HOME', '.claude-profiles', '.credentials.json'),
                  'codex': ('openai', 'CODEX_PROFILES_HOME', '.chatgpt-profiles', 'auth.json'),
                  'pi': ('pi', 'PI_PROFILES_HOME', '.pi-profiles', 'agent/auth.json')}
@@ -34,7 +36,7 @@ def entries(providers=None):
             RUNTIME.target_path(entry)
             result.append(entry)
     if providers is not None and 'omniroute' in providers:
-        root = Path(os.environ.get('WORKBENCHES_CREDENTIALS_HOME', config / 'credentials'))
+        root = Path(resolve_env('CREDENTIALS_HOME', str(config / 'credentials'), sensitive=True))
         result.append({'enabled': True, 'provider': 'omniroute', 'profile': 'opencode',
                        'credentialPath': str(root / 'opencode/omniroute.json')})
     return result
@@ -42,7 +44,7 @@ def entries(providers=None):
 
 def login_email(rows):
     """Use only matching selected-profile metadata, never credential contents."""
-    config = Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config')) / 'workbenches'
+    config = config_root()
     emails = set()
     for row in rows:
         provider = {'codex': 'openai'}.get(row['provider'], row['provider'])
@@ -93,14 +95,14 @@ def status(provider):
 
 
 def selected_ready():
-    selected = os.environ.get('WORKBENCHES_SELECTED_PROVIDERS', '')
+    selected = resolve_env('SELECTED_PROVIDERS')
     providers = {'codex' if p == 'openai' else p for p in selected.split(',') if p}
     return bool(providers) and all(status(provider) == 0 for provider in providers)
 
 
 def main():
     provider = {'openai': 'codex', 'Codex': 'codex', 'Claude': 'claude', 'Pi': 'pi'}.get(sys.argv[2], sys.argv[2]) if len(sys.argv) > 2 else None
-    selected = os.environ.get('WORKBENCHES_SELECTED_PROVIDERS')
+    selected = resolve_env('SELECTED_PROVIDERS', default=None)
     requested = {provider} if provider else ({'codex' if p == 'openai' else p for p in selected.split(',')} if selected else None)
     if sys.argv[1] == 'selected-ready':
         return 0 if selected_ready() else 1

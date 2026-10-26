@@ -110,7 +110,7 @@ def main():
         initial = statuses()
         assert initial == 'installed:installed', initial
         requirements_output = setup_tui(repo, b'PQ', env, expected_status=130)
-        for text in ('workBenches v', 'Linux', 'REQUIREMENTS', 'Docker', 'REQUIRED SOFTWARE',
+        for text in ('openBenches v', 'Linux', 'REQUIREMENTS', 'Docker', 'REQUIRED SOFTWARE',
                      'OPTIONAL VAULT', 'Vault', 'G Profiles', 'Setup cancelled'):
             assert text in requirements_output, requirements_output[-3500:]
         profiles_output = setup_tui(repo, b'GQ', env, expected_status=130)

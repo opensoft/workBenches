@@ -2,7 +2,13 @@
 set -euo pipefail
 umask 077
 
-manifest="${PI_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/pi-profiles.json}"
+sync_dir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+compat_lib="$sync_dir/openbenches-compat.sh"
+[[ -f "$compat_lib" ]] || compat_lib="$sync_dir/lib/openbenches-compat.sh"
+[[ -f "$compat_lib" ]] || compat_lib=/usr/local/share/openbenches/openbenches-compat.sh
+source "$compat_lib"
+config_root="$(openbenches_config_root)"
+manifest="${PI_PROFILES_MANIFEST:-$config_root/pi-profiles.json}"
 base="${PI_PROFILES_HOME:-$HOME/.pi-profiles}"
 [[ -d "$HOME/.local/bin" ]] && export PATH="$HOME/.local/bin:$PATH"
 pi_bin="${PI_BIN:-$(command -v pi || true)}"

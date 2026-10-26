@@ -2,8 +2,9 @@
 set -euo pipefail
 umask 077
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/azure-cli-runtime.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/openbenches-compat.sh"
 
-MANIFEST="${AI_CREDENTIAL_KV_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/ai-credential-keyvault.json}"
+MANIFEST="${AI_CREDENTIAL_KV_MANIFEST:-$(openbenches_config_root)/ai-credential-keyvault.json}"
 STATE_FILE="${AI_CREDENTIAL_KV_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/workbenches/ai-credential-keyvault-backups.json}"
 ACTION=""
 PROVIDER_FILTER=""
@@ -183,7 +184,7 @@ approved_profile_root() {
         claude) printf '%s/profiles\n' "${CLAUDE_PROFILES_HOME:-$HOME/.claude-profiles}" ;;
         codex) printf '%s/profiles\n' "${CODEX_PROFILES_HOME:-${CHATGPT_PROFILES_HOME:-$HOME/.chatgpt-profiles}}" ;;
         pi) printf '%s/profiles\n' "${PI_PROFILES_HOME:-$HOME/.pi-profiles}" ;;
-        omniroute) printf '%s/opencode\n' "${WORKBENCHES_CREDENTIALS_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/credentials}" ;;
+        omniroute) printf '%s/opencode\n' "$(openbenches_resolve_env --sensitive CREDENTIALS_HOME "$(openbenches_config_root)/credentials")" ;;
         *) return 1 ;;
     esac
 }

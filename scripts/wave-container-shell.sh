@@ -84,10 +84,21 @@ lanes_os_env=()
     || lanes_os_env=(--env "LANES_OS=$lanes_os")
 
 home_dir="${HOME:?HOME is required}"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$script_dir/lib/openbenches-compat.sh"
 default_user="$(id -un 2>/dev/null || printf 'user')"
-workbenches_root="${WORKBENCHES_ROOT:-$home_dir/projects/workBenches}"
+workbenches_root="$(openbenches_resolve_env --sensitive ROOT)"
+if [[ -z "$workbenches_root" ]]; then
+    workbenches_root="$home_dir/Projects/openBenches"
+    [[ -d "$workbenches_root" ]] || workbenches_root="$home_dir/projects/openBenches"
+    [[ -d "$workbenches_root" ]] || workbenches_root="$home_dir/projects/workBenches"
+    [[ -d "$workbenches_root" ]] || workbenches_root="$home_dir/Projects/workBenches"
+fi
+wave_config_source="$(openbenches_config_root)"
+wave_cache_root="$(openbenches_cache_root)"
 container="py-bench"
 container_user="${USER:-$default_user}"
+wave_config_destination="/home/${container_user}/.config/$(basename "$wave_config_source")"
 workdir="/workspace"
 shell_path="zsh"
 block_title="pyBench"
@@ -182,7 +193,7 @@ usage() {
 Usage: wave-container-shell.sh [options] [container]
 
 Options:
-  --workbenches-root PATH  workBenches checkout path
+  --openbenches-root PATH  openBenches checkout path (legacy: --workbenches-root)
   --compose-file PATH      Compose file used to create the container
   --user NAME              Container user (default: current WSL user)
   --workdir PATH           Container working directory (default: /workspace)
@@ -198,9 +209,18 @@ EOF
 }
 
 original_invocation_args=("$@")
+workbenches_root_flag=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --workbenches-root) workbenches_root="$2"; shift 2 ;;
+        --workbenches-root|--openbenches-root)
+            if [[ -n "$workbenches_root_flag" && "$workbenches_root_flag" != "$2" ]]; then
+                echo 'Conflicting old/new checkout root flags; use one identical value.' >&2
+                exit 2
+            fi
+            workbenches_root_flag="$2"
+            workbenches_root="$2"
+            shift 2
+            ;;
         --compose-file) compose_file="$2"; compose_file_explicit=true; shift 2 ;;
         --user) container_user="$2"; shift 2 ;;
         --workdir) workdir="$2"; shift 2 ;;
@@ -284,7 +304,7 @@ validate_bind_source() {
         "$container_home"/.codex|"$container_home"/.omnigent|"$container_home"/.agents|"$container_home"/.pi|\
         "$container_home"/.gemini|"$container_home"/.grok|"$container_home"/.copilot-cli|\
         "$container_home"/.notebooklm|"$container_home"/.notebooklm-mcp-cli|\
-        "$container_home"/.config/gh|"$container_home"/.config/sonarqube|"$container_home"/.config/workbenches|\
+        "$container_home"/.config/gh|"$container_home"/.config/sonarqube|"$container_home"/.config/workbenches|"$container_home"/.config/openbenches|\
         "$container_home"/.local/lib/workbenches|"$container_home"/.local/state/workbenches|\
         "$container_home"/.local/state/opensoft/agenttower/logs)
             expected_type="directory"
@@ -355,7 +375,7 @@ declared_compose_bind_sources() {
         overlay="$bench_dir/.devcontainer/docker-compose.wslg.yml"
         [[ ! -f "$overlay" ]] || config_args+=(-f "$overlay")
     fi
-    overlay="${WAVE_WORKBENCHES_COMPOSE_CACHE:-$home_dir/.cache/workbenches/wave-compose}/$container.override.yml"
+    overlay="${WAVE_WORKBENCHES_COMPOSE_CACHE:-$wave_cache_root/wave-compose}/$container.override.yml"
     [[ ! -f "$overlay" ]] || config_args+=(-f "$overlay")
     # Render metadata only; do not run initialization, create host sources, or
     # inspect Docker Desktop's internal paths from the user distro.
@@ -373,9 +393,17 @@ wave_bind_source_for_destination() {
             # These are the deterministic host binds emitted by the Wave
             # override writer, not arbitrary paths underneath the user home.
             case "$relative" in
+                .config/workbenches|.config/openbenches)
+                    if [[ "$destination" == "$wave_config_destination" ]]; then
+                        printf '%s\n' "$wave_config_source"
+                    else
+                        printf '%s\n' "$home_dir/$relative"
+                    fi
+                    return 0
+                    ;;
                 .zshrc|.oh-my-zsh|.p10k.zsh|.bashrc|.gitconfig|.ssh|.config/gh|\
                 .azure|.aws|.kube|.claude|.claude.json|.claude-profiles|.codex|\
-                .chatgpt-profiles|.opencode-profiles|.config/workbenches|\
+                .chatgpt-profiles|.opencode-profiles|\
                 .local/lib/workbenches|.local/state/workbenches|.gemini-profiles|\
                 .grok-profiles|.glm-profiles|.omnigent|.agents|.pi|.pi-profiles|.config/sonarqube|\
                 .gemini|.grok|.copilot-cli|.notebooklm|.notebooklm-mcp-cli|\
@@ -471,7 +499,7 @@ validate_wave_host_sources() {
     for directory in projects .ssh .azure .aws .kube .config/gh .claude \
         .claude-profiles .codex .chatgpt-profiles .opencode-profiles .gemini-profiles \
         .grok-profiles .glm-profiles .omnigent .agents .pi .pi-profiles .oh-my-zsh \
-        .config/workbenches .local/lib/workbenches .local/state/workbenches \
+        .local/lib/workbenches .local/state/workbenches \
         .config/sonarqube .gemini .grok .copilot-cli .notebooklm .notebooklm-mcp-cli \
         .local/state/opensoft/agenttower/logs; do
         if [[ -e "$home_dir/$directory" || -L "$home_dir/$directory" ]]; then
@@ -480,6 +508,9 @@ validate_wave_host_sources() {
             validate_bind_source "$home_dir/$directory" "$target" || return 1
         fi
     done
+    if [[ -e "$wave_config_source" || -L "$wave_config_source" ]]; then
+        validate_bind_source "$wave_config_source" "$wave_config_destination" || return 1
+    fi
 }
 
 validate_repair_ownership() {
@@ -607,7 +638,7 @@ ensure_host_sources() {
         "$home_dir/.agents" \
         "$home_dir/.pi" \
         "$home_dir/.pi-profiles" \
-        "$home_dir/.config/workbenches" \
+        "$wave_config_source" \
         "$home_dir/.local/lib/workbenches" \
         "$home_dir/.local/state/workbenches" \
         "$home_dir/.config/sonarqube" \
@@ -626,7 +657,7 @@ ensure_host_sources() {
 write_wave_compose_override() {
     ensure_host_sources || return 1
 
-    local override_dir="${WAVE_WORKBENCHES_COMPOSE_CACHE:-$home_dir/.cache/workbenches/wave-compose}"
+    local override_dir="${WAVE_WORKBENCHES_COMPOSE_CACHE:-$wave_cache_root/wave-compose}"
     local override_file="$override_dir/$container.override.yml"
     local history_volume="${container//-/}history"
 
@@ -655,7 +686,7 @@ services:
       - ${home_dir}/.codex:/home/${container_user}/.codex:cached
       - ${home_dir}/.chatgpt-profiles:/home/${container_user}/.chatgpt-profiles:cached
       - ${home_dir}/.opencode-profiles:/home/${container_user}/.opencode-profiles:cached
-      - ${home_dir}/.config/workbenches:/home/${container_user}/.config/workbenches:ro
+      - ${wave_config_source}:${wave_config_destination}:ro
       - ${home_dir}/.local/lib/workbenches:/home/${container_user}/.local/lib/workbenches:ro
       - ${home_dir}/.local/state/workbenches:/home/${container_user}/.local/state/workbenches:cached
       - ${home_dir}/.gemini-profiles:/home/${container_user}/.gemini-profiles:cached
@@ -820,7 +851,7 @@ container_missing_required_mounts() {
         "/home/${container_user}/.claude-profiles"
         "/home/${container_user}/.chatgpt-profiles"
         "/home/${container_user}/.opencode-profiles"
-        "/home/${container_user}/.config/workbenches"
+        "$wave_config_destination"
         "/home/${container_user}/.local/lib/workbenches"
         "/home/${container_user}/.local/state/workbenches"
         "/home/${container_user}/.pi-profiles"
@@ -1062,8 +1093,10 @@ if [[ "$check_only" == true ]]; then
          if test "$WORKBENCHES_HAS_OPENCODE_LAUNCHER" = 1; then
            command -v opencode-profile; command -v popencode
            # Shared launchers exist even when this provider was not selected.
-           if test -e "$HOME/.config/workbenches/opencode-profiles.json" || test -L "$HOME/.config/workbenches/opencode-profiles.json"; then
-             test -f "$HOME/.config/workbenches/opencode-profiles.json"
+           config_root="$HOME/.config/workbenches"
+           if test -d "$HOME/.config/openbenches"; then config_root="$HOME/.config/openbenches"; fi
+           if test -e "$config_root/opencode-profiles.json" || test -L "$config_root/opencode-profiles.json"; then
+             test -f "$config_root/opencode-profiles.json"
            fi
            test -d "$HOME/.opencode-profiles"
          fi

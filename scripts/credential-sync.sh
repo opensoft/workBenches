@@ -3,20 +3,24 @@
 set -euo pipefail
 self="$(readlink -f "${BASH_SOURCE[0]}")"
 root="$(cd "$(dirname "$self")/.." && pwd)"
+source "$root/scripts/lib/openbenches-compat.sh"
 if [[ "${1:-}" == --start || "${1:-}" == --install ]]; then
-    state="${XDG_CONFIG_HOME:-$HOME/.config}/workbenches"
+    state="$(openbenches_config_root)"
     mkdir -p "$state" "$HOME/.local/bin"
     chmod 700 "$state"
-    target="$HOME/.local/bin/workbenches-credential-sync"
-    if [[ -e "$target" || -L "$target" ]]; then
-        [[ -L "$target" && "$(readlink -f "$target")" == "$self" ]] || { echo 'Existing sync command was preserved; resolve its name collision first.' >&2; exit 1; }
-    else
-        ln -s "$self" "$target"
-    fi
+    targets=("$HOME/.local/bin/workbenches-credential-sync" "$HOME/.local/bin/openbenches-credential-sync")
+    for target in "${targets[@]}"; do
+        if [[ -e "$target" || -L "$target" ]]; then
+            [[ -L "$target" && "$(readlink -f "$target")" == "$self" ]] || { echo "Existing sync command was preserved; resolve its name collision first: $target" >&2; exit 1; }
+        fi
+    done
+    for target in "${targets[@]}"; do
+        openbenches_link_command "$self" "$target"
+    done
     umask 077
     touch "$state/company-sync-enabled"
     [[ "$1" != --install ]] || exit 0
-    unset WORKBENCHES_HOST_RPC
+    unset WORKBENCHES_HOST_RPC OPENBENCHES_HOST_RPC WB_HOST_RPC
     nohup bash "$self" --watch </dev/null >>"$state/credential-sync-agent.log" 2>&1 &
     echo 'Company sync agent requested. View Profiles sync status to check readiness.'
     exit 0

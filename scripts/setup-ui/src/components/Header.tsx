@@ -34,7 +34,7 @@ export const Header: Component = () => {
         {'╔══════════════════════════════════════════════════════════════════════════════╗'}
       </text>
       <text fg="#6BB5FF">
-        {'║               WorkBenches Configuration Manager                              ║'}
+        {'║               openBenches Configuration Manager                              ║'}
       </text>
       <text fg="#6BB5FF">
         {'╚══════════════════════════════════════════════════════════════════════════════╝'}
