@@ -272,6 +272,9 @@ class ImageTests(unittest.TestCase):
                 'sourceHash':shared.fingerprint('base'),'image':'evil.example/image@sha256:'+'a'*64,
             }}}},
             'size':b'x'*65537,
+            'list':b'[]',
+            'null':b'null',
+            'scalar':b'1',
         }
         for label,canonical in cases.items():
             with self.subTest(case=label):
@@ -281,8 +284,20 @@ class ImageTests(unittest.TestCase):
                 })
                 self.assertEqual(code,0)
                 self.assertEqual(urls,[self.release_url('opensoft/openBenches'),self.release_url('opensoft/workBenches')])
-                pull=next(x for x in calls if x[0][1]=='pull')
-                self.assertEqual(pull[0][-1],legacy['images']['base']['linux/amd64']['image'])
+                pulls=[x for x in calls if x[0][1]=='pull']
+                self.assertEqual(len(pulls),1)
+                self.assertEqual(pulls[0][0][-1],legacy['images']['base']['linux/amd64']['image'])
+
+    def test_non_object_manifests_from_both_repositories_use_local_build(self):
+        for payload in (b'[]',b'null',b'1'):
+            with self.subTest(payload=payload):
+                code,urls,calls=self.exercise_remote({
+                    'opensoft/openBenches':payload,
+                    'opensoft/workBenches':payload,
+                })
+                self.assertEqual(code,1)
+                self.assertEqual(urls,[self.release_url('opensoft/openBenches'),self.release_url('opensoft/workBenches')])
+                self.assertFalse(any(argv[1] in {'pull','tag'} for argv,_ in calls))
 
     def test_valid_canonical_manifest_is_not_replaced_after_pull_failure(self):
         canonical=self.release_manifest('a'*64)
