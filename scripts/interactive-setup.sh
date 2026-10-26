@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Interactive Setup UI for workBenches
+# Interactive Setup UI for openBenches
 # Provides keyboard-driven selection interface for installing components
 
 # Setup logging
@@ -8,7 +8,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/image-names.sh"
 source "$SCRIPT_DIR/lib/setup-prerequisites.sh"
 source "$SCRIPT_DIR/lib/setup-status-loader.sh"
+source "$SCRIPT_DIR/lib/openbenches-compat.sh"
 source "$SCRIPT_DIR/../bootstrap.sh"
+openbenches_config_dir="$(openbenches_config_root)"
 setup_version="$(workbenches_version)"
 LOG_DIR="$SCRIPT_DIR/../logs"
 mkdir -p "$LOG_DIR"
@@ -373,7 +375,7 @@ init_components() {
     component_description[host_shell]="Shell setup"
     component_description[workspace_repo]="Org workspace"
     component_description[ai_accounts]="AI accounts"
-    component_description[workbenches_account]="workBenches account"
+    component_description[workbenches_account]="openBenches account"
     component_checked[workbenches_account]=false
     component_description[docker]=Docker
     component_description[setup_tools]=Tools
@@ -605,7 +607,7 @@ check_component_status() {
             [[ -f "${AGENT_PROTOCOL_ROOT:-$HOME/.agents}/workspace.yaml" ]] && echo configured || echo optional
             ;;
         ai_accounts)
-            if compgen -G "${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/*-profiles.json" >/dev/null; then echo configured; else echo optional; fi
+            if compgen -G "$openbenches_config_dir/*-profiles.json" >/dev/null; then echo configured; else echo optional; fi
             ;;
         claude_cli)
             if component_binary_present claude_cli; then
@@ -1113,7 +1115,7 @@ render_setup_frame() {
     local os_label
     draw_setup_banner
     os_label="${setup_os_label:0:$((setup_ui_width - 20))}"
-    printf '%b%s%b\n' "$SILVER" "$(setup_ui_pair "workBenches v$setup_version" "$os_label" "$setup_ui_width")" "$NC"
+    printf '%b%s%b\n' "$SILVER" "$(setup_ui_pair "openBenches v$setup_version" "$os_label" "$setup_ui_width")" "$NC"
     printf '%b%s%b\n\n' "$SILVER_EDGE" "$(setup_ui_rule "$setup_ui_width")" "$NC"
 
     if [[ "$CURRENT_SECTION" == 3 ]]; then
@@ -1676,7 +1678,7 @@ setup_claude_session_interactive() {
 {
   "sessionKey": "$session_key",
   "createdAt": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
-  "createdBy": "workBenches interactive setup"
+  "createdBy": "openBenches interactive setup"
 }
 EOF
         chmod 600 "$HOME/.claude/config.json"
@@ -1707,7 +1709,7 @@ save_to_profile() {
         fi
     else
         echo "" >> "$shell_profile"
-        echo "# workBenches AI API Key" >> "$shell_profile"
+        echo "# openBenches AI API Key" >> "$shell_profile"
         echo "export $key_name='$key_value'" >> "$shell_profile"
     fi
 
@@ -2156,7 +2158,7 @@ process_selections() {
                                 else
                                     log "ERROR: Setup failed for $bench"
                                     echo -e "  ${YELLOW}⚠ Setup failed${NC}"
-                                    echo -e "  ${DIM}Inspect the build log and rerun workBenches setup after stopping this bench; Wave will display a repair command if needed.${NC}"
+                                    echo -e "  ${DIM}Inspect the build log and rerun openBenches setup after stopping this bench; Wave will display a repair command if needed.${NC}"
                                     failed_components[$active_component]=true; ((fail_count++))
                                 fi
                             else
@@ -2702,7 +2704,7 @@ process_selections() {
         else
             local workbenches_account_status=$?
             setup_propagate_cancel "$workbenches_account_status"
-            echo 'Optional workBenches account sign-in failed; retry from Requirements.'
+            echo 'Optional openBenches account sign-in failed; retry from Requirements.'
             ((fail_count++))
         fi
     fi
@@ -2793,7 +2795,7 @@ configure_selected_accounts() {
 
                     if guide_isolated_profile_logins \
                         "Codex" \
-                        "${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/openai-profiles.json" \
+                        "$openbenches_config_dir/openai-profiles.json" \
                         "pcodex"; then
                         continue
                     fi
@@ -2845,7 +2847,7 @@ configure_selected_accounts() {
 
                     if guide_isolated_profile_logins \
                         "Claude" \
-                        "${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/claude-profiles.json" \
+                        "$openbenches_config_dir/claude-profiles.json" \
                         "pclaude"; then
                         continue
                     fi

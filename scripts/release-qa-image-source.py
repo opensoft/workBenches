@@ -8,6 +8,7 @@ from pathlib import Path
 import urllib.error
 import urllib.request
 from release_validation import SHA, ValidationError, read, source, version
+from openbenches_compat import resolve_env
 
 SPEC = importlib.util.spec_from_file_location('image_preflight', Path(__file__).with_name('release-qa-preflight.py'))
 preflight = importlib.util.module_from_spec(SPEC)
@@ -36,12 +37,13 @@ def main():
     args = parser.parse_args()
     identity = (planned_identity(args.plan, args.commit) if args.plan else
                 source(args.root, Path(__file__).resolve().parents[1] / 'config/release-tests.json', args.commit))
-    if os.environ.get('GITHUB_REPOSITORY') != 'opensoft/workBenches':
+    repository = os.environ.get('GITHUB_REPOSITORY')
+    if repository not in ('opensoft/workBenches', 'opensoft/openBenches'):
         raise ValidationError('unexpected_image_repository')
-    token = os.environ['WB_SOURCE_READ_TOKEN']
+    token = resolve_env('SOURCE_READ_TOKEN', sensitive=True)
 
     def fetch(path):
-        request = urllib.request.Request('https://api.github.com/repos/opensoft/workBenches/' + path,
+        request = urllib.request.Request('https://api.github.com/repos/' + repository + '/' + path,
             headers={'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json'})
         try:
             with urllib.request.urlopen(request, timeout=15) as response:

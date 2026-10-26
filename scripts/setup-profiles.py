@@ -16,11 +16,29 @@ from setup_prompts import prompt, cancellation_signals, propagate_cancel
 try:
     import workbenches_host as host
 except ImportError:
-    if os.environ.get('WORKBENCHES_HOST_RPC'):
+    if os.environ.get('WORKBENCHES_HOST_RPC') or os.environ.get('OPENBENCHES_HOST_RPC'):
         raise
     host = None
 
 HERE = Path(__file__).resolve().parent
+
+
+def scrubbed_environment(*suffixes):
+    env = dict(os.environ)
+    for prefix in ('OPENBENCHES_', 'WORKBENCHES_', 'WB_'):
+        for suffix in suffixes:
+            env.pop(prefix + suffix, None)
+    return env
+
+
+def ai_environment(email, name, scope):
+    env = scrubbed_environment('IDENTITY_EMAIL', 'IDENTITY_NAME', 'IDENTITY_SCOPE',
+                               'SELECTED_PROVIDERS', 'AUTH_ROUTE', 'AUTH_ROUTE_FILE')
+    env.update(OPENBENCHES_IDENTITY_EMAIL=email, OPENBENCHES_IDENTITY_NAME=name,
+               OPENBENCHES_IDENTITY_SCOPE=scope,
+               WORKBENCHES_IDENTITY_EMAIL=email, WORKBENCHES_IDENTITY_NAME=name,
+               WORKBENCHES_IDENTITY_SCOPE=scope)
+    return env
 
 
 def ask(label, default=''):
@@ -41,10 +59,8 @@ def connect_github(profile, data, identity=None):
 
 
 def account(profile, action):
-    env = dict(os.environ, WORKBENCHES_ACCOUNT_ROOT=str(profiles.account_root(profile)))
-    # Global legacy deployment overrides must not redirect a different company.
-    env.pop('WORKBENCHES_ACCOUNT_ISSUER', None)
-    env.pop('WORKBENCHES_ACCOUNT_CLIENT_ID', None)
+    env = scrubbed_environment('ACCOUNT_ROOT', 'ACCOUNT_ISSUER', 'ACCOUNT_CLIENT_ID', 'ACCOUNT_OFFLINE')
+    env['WORKBENCHES_ACCOUNT_ROOT'] = str(profiles.account_root(profile))
     if (profiles.account_root(profile) / 'credential-sync.json').exists():
         env['WORKBENCHES_ACCOUNT_OFFLINE'] = '1'
     result = subprocess.run([sys.executable, str(HERE / 'setup-workbenches-account.py'), *action], env=env)
@@ -157,12 +173,8 @@ def edit(profile, data):
             account(profile, ['--logout'])
         elif choice == 'a':
             print('AI provider sign-in and vault grants are separate from company/GitHub sign-in.')
-            env = dict(os.environ, WORKBENCHES_IDENTITY_EMAIL=profile['email'],
-                       WORKBENCHES_IDENTITY_NAME=profile['name'],
-                       WORKBENCHES_IDENTITY_SCOPE='personal' if profile['id'] == 'personal' else 'organization')
-            # Do not inherit the provider/route chosen for a different identity.
-            for key in ('WORKBENCHES_SELECTED_PROVIDERS', 'WORKBENCHES_AUTH_ROUTE', 'WORKBENCHES_AUTH_ROUTE_FILE'):
-                env.pop(key, None)
+            env = ai_environment(profile['email'], profile['name'],
+                                 'personal' if profile['id'] == 'personal' else 'organization')
             result = subprocess.run(['bash', str(HERE / 'setup-ai-profiles.sh'), '--interactive'], env=env)
             propagate_cancel(result.returncode)
 
@@ -237,11 +249,9 @@ def identity_form(scope, data):
 
 def ai_accounts(scope, identity):
     print('AI provider sign-in and vault grants are separate from identity sign-in.')
-    env = dict(os.environ, WORKBENCHES_IDENTITY_EMAIL=identity['email'],
-               WORKBENCHES_IDENTITY_NAME=scope['name'] if scope['id'] != 'personal' else identity['name'],
-               WORKBENCHES_IDENTITY_SCOPE='personal' if scope['id'] == 'personal' else 'organization')
-    for key in ('WORKBENCHES_SELECTED_PROVIDERS', 'WORKBENCHES_AUTH_ROUTE', 'WORKBENCHES_AUTH_ROUTE_FILE'):
-        env.pop(key, None)
+    env = ai_environment(identity['email'],
+                         scope['name'] if scope['id'] != 'personal' else identity['name'],
+                         'personal' if scope['id'] == 'personal' else 'organization')
     result = subprocess.run(['bash', str(HERE / 'setup-ai-profiles.sh'), '--interactive'], env=env)
     propagate_cancel(result.returncode)
 
@@ -281,7 +291,7 @@ def identity_menu(scope, identity, data):
         action, selected = choose(scope['name'] + ' / ' + identity['name'], rows,
             lambda item: [identity['email'], 'Default identity' if scope['defaultIdentityId'] == identity['id'] else 'Additional identity',
                           '', ('@' + item['login'] + ' · ' + item['state']) if item else 'No GitHub accounts linked.',
-                          'G connects or links an existing account.', 'Defaults apply inside workBenches only.'],
+                          'G connects or links an existing account.', 'Defaults apply inside openBenches only.'],
             'G Link GitHub  E Edit  D Default GitHub  U Unlink  A AI')
         if action == 'b': return
         if action == 'g': connect_github(scope, data, identity)

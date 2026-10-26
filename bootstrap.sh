@@ -143,6 +143,20 @@ workbenches_init_submodules() {
     return "$status"
 }
 
+workbenches_prepare_fresh_roots() {
+    local kind base
+    for kind in config cache data; do
+        case "$kind" in
+            config) base="${XDG_CONFIG_HOME:-$HOME/.config}" ;;
+            cache) base="${XDG_CACHE_HOME:-$HOME/.cache}" ;;
+            data) base="${XDG_DATA_HOME:-$HOME/.local/share}" ;;
+        esac
+        if [[ ! -d "$base/openbenches" && ! -d "$base/workbenches" ]]; then
+            mkdir -p -m 700 "$base/openbenches" || return $?
+        fi
+    done
+}
+
 workbenches_bootstrap_main() {
     local destination="${HOME:?HOME is required}/Projects/openBenches" setup=false branch=""
     command -v git >/dev/null 2>&1 || { echo 'Install Git first, then rerun bootstrap.' >&2; return 1; }
@@ -180,6 +194,9 @@ workbenches_bootstrap_main() {
     [[ -z "$branch" ]] || clone_args=(--branch "$branch")
     mkdir -p "$(dirname "$destination")" || return $?
     workbenches_clone https://github.com/opensoft/openBenches.git "$destination" "${clone_args[@]}" || return $?
+    if [[ "${OPENBENCHES_FROZEN:-${WORKBENCHES_FROZEN:-${WB_FROZEN:-}}}" != 1 ]]; then
+        workbenches_prepare_fresh_roots || return $?
+    fi
     if [[ "$setup" == true ]]; then
         (cd "$destination" && bash ./setup.sh)
     else

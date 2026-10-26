@@ -557,6 +557,49 @@ class ReleaseAutomationTests(unittest.TestCase):
         ready, blocked = preflight.readiness(plan, [{'status':'online','busy':False,'labels':[{'name':'self-hosted'},{'name':'qa'}]}], True)
         self.assertEqual(len(ready), 1); self.assertEqual(blocked, [])
 
+    def test_runner_label_aliases_route_old_first_without_requiring_dual_labels(self):
+        suite = {'suite': 'native', 'labels': ['self-hosted', 'Linux', 'workbenches-qa', 'arch'],
+                 'labelRoutes': [['self-hosted', 'Linux', 'workbenches-qa', 'arch'],
+                                 ['self-hosted', 'Linux', 'openbenches-qa', 'arch']]}
+        plan = {'source': self.identity, 'external': [suite]}
+        def runner(*labels):
+            return {'status': 'online', 'busy': False, 'labels': [{'name': label} for label in labels]}
+        for labels, expected in [
+                (('self-hosted', 'Linux', 'workbenches-qa', 'arch'), 'workbenches-qa'),
+                (('self-hosted', 'Linux', 'openbenches-qa', 'arch'), 'openbenches-qa'),
+                (('self-hosted', 'Linux', 'workbenches-qa', 'openbenches-qa', 'arch'), 'workbenches-qa')]:
+            with self.subTest(labels=labels):
+                ready, blocked = preflight.readiness(plan, [runner(*labels)], True)
+                self.assertEqual(blocked, [])
+                self.assertEqual(ready[0]['labels'], ['self-hosted', 'Linux', expected, 'arch'])
+                self.assertNotIn('labelRoutes', ready[0])
+        ready, blocked = preflight.readiness(plan, [runner('self-hosted', 'Linux', 'arch')], True)
+        self.assertEqual(ready, [])
+        self.assertEqual(blocked[0]['reason'], 'matching_runner_unavailable')
+
+    def test_release_environment_aliases_and_qa_config_fallback_fail_closed(self):
+        manifest = json.loads((ROOT / 'config/release-tests.json').read_text())
+        self.assertEqual(manifest['runnerLabelAliases'], {'workbenches-qa': ['openbenches-qa']})
+        for suite in manifest['suites'].values():
+            if suite['kind'] == 'external':
+                self.assertIn('workbenches-qa', suite['labels'])
+                self.assertNotIn('openbenches-qa', suite['labels'])
+        with patch.dict(os.environ, {'OPENBENCHES_SOURCE_READ_TOKEN': 'new-fixture',
+                                     'WB_SOURCE_READ_TOKEN': 'old-fixture'}, clear=True):
+            with self.assertRaisesRegex(ValueError, 'OPENBENCHES_SOURCE_READ_TOKEN and WB_SOURCE_READ_TOKEN'):
+                preflight.resolve_env('SOURCE_READ_TOKEN', sensitive=True)
+        with patch.dict(os.environ, {'OPENBENCHES_QA_CONFIG_PATH': '/new-release.json',
+                                     'WB_QA_CONFIG_PATH': '/new-release.json'}, clear=True):
+            self.assertEqual(str(rv.qa_config_path()), '/new-release.json')
+        with patch.dict(os.environ, {'OPENBENCHES_QA_CONFIG_PATH': '/new-release.json',
+                                     'WB_QA_CONFIG_PATH': '/old-release.json'}, clear=True):
+            with self.assertRaisesRegex(ValueError, 'environment conflict'):
+                rv.qa_config_path()
+        with patch.dict(os.environ, {}, clear=True), patch.object(rv.Path, 'is_file', return_value=False):
+            self.assertEqual(str(rv.qa_config_path()), '/etc/workbenches/release-qa.json')
+        with patch.dict(os.environ, {}, clear=True), patch.object(rv.Path, 'is_file', return_value=True):
+            self.assertEqual(str(rv.qa_config_path()), '/etc/openbenches/release-qa.json')
+
     def test_private_workers_require_main_or_a_protected_candidate_branch(self):
         plan = {'source':dict(commit='a'*40,version='1.6.0-rc.3')}
         self.assertTrue(preflight.trusted_source(plan, lambda path: {'commit': {'sha': 'a'*40}}))

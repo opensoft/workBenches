@@ -3,11 +3,17 @@ set -euo pipefail
 umask 077
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$repo_dir/scripts/lib/openbenches-compat.sh"
 credential_tool="$repo_dir/scripts/opencode-omniroute-credential"
 escrow_tool="$repo_dir/scripts/backup-ai-profile-credentials-to-kv.sh"
-credentials_root="${WORKBENCHES_CREDENTIALS_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/credentials}"
+config_root="$(openbenches_config_root)"
+credentials_root="$(openbenches_resolve_env --sensitive CREDENTIALS_HOME "$config_root/credentials")"
 credential_file="${OMNIROUTE_CREDENTIAL_FILE:-$credentials_root/opencode/omniroute.json}"
-registry_root="${WORKBENCHES_REGISTRY_ROOT:-${XDG_DATA_HOME:-$HOME/.local/share}/workbenches/registries}"
+manifest_credential_path="$credential_file"
+case "$credential_file" in
+    "$HOME"/*) manifest_credential_path="~/${credential_file#"$HOME"/}" ;;
+esac
+registry_root="$(openbenches_resolve_env --sensitive REGISTRY_ROOT "$(openbenches_data_root)/registries")"
 temp_dir=""
 
 cleanup() {
@@ -29,7 +35,7 @@ candidates=()
 if [[ -n "${AI_CREDENTIAL_KV_MANIFEST:-}" ]]; then
     candidates+=("$AI_CREDENTIAL_KV_MANIFEST")
 fi
-candidates+=("${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/ai-credential-keyvault.json")
+candidates+=("$config_root/ai-credential-keyvault.json")
 if [[ -n "${WORKBENCHES_OPENSOFT_REGISTRY:-}" ]]; then
     candidates+=("${WORKBENCHES_OPENSOFT_REGISTRY%/}/ai/vault/azure-key-vault.json")
 fi
@@ -45,14 +51,14 @@ fi
 manifest=""
 for candidate in "${candidates[@]}"; do
     [[ -f "$candidate" && ! -L "$candidate" ]] || continue
-    if jq -e '
+    if jq -e --arg credential_path "$manifest_credential_path" '
       .owner == {type:"tenant",id:"opensoft"}
       and (.entries | any(
         .provider == "omniroute"
         and .profile == "opencode"
         and .enabled == true
         and .bootstrap == true
-        and .credentialPath == "~/.config/workbenches/credentials/opencode/omniroute.json"
+        and .credentialPath == $credential_path
       ))
     ' "$candidate" >/dev/null 2>&1; then
         manifest="$candidate"
@@ -68,7 +74,7 @@ done
 temp_dir="$(mktemp -d "${TMPDIR:-/tmp}/omniroute-restore.XXXXXX")"
 chmod 0700 "$temp_dir"
 private_manifest="$temp_dir/manifest.json"
-jq '
+jq --arg credential_path "$manifest_credential_path" '
   {
     schemaVersion,
     tenantId,
@@ -80,6 +86,7 @@ jq '
       and .profile == "opencode"
       and .enabled == true
       and .bootstrap == true
+      and .credentialPath == $credential_path
     )]
   }
 ' "$manifest" >"$private_manifest"

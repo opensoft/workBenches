@@ -7,6 +7,7 @@
 # =============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/openbenches-compat.sh"
 WORKBENCHES_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # Colors for output
@@ -31,6 +32,7 @@ declare -A COMMANDS=(
     ["update-workspace"]="Intelligent workspace updater - routes to appropriate updater"
     ["delete-workspace"]="Intelligent workspace deleter - routes to appropriate deleter"
     ["setup-workbenches"]="WorkBenches setup and configuration"
+    ["setup-openbenches"]="openBenches setup and configuration"
     ["update-bench-config"]="Auto-discover and update bench configuration"
     ["new-bench"]="Create new development benches with AI assistance"
     ["workbench-config"]="Shared configuration manager for all workbench types"
@@ -56,7 +58,8 @@ configured_install_location() {
 }
 
 configured_discovery_file() {
-    local discovery_file="${WORKBENCHES_PROJECT_DISCOVERY_FILE:-$HOME/.config/workbenches/project-bin}"
+    local discovery_file
+    discovery_file="$(openbenches_resolve_env --sensitive PROJECT_DISCOVERY_FILE "$(openbenches_config_root)/project-bin")" || return $?
     case "$discovery_file" in
         '~') discovery_file="$HOME" ;;
         '~/'*) discovery_file="$HOME/${discovery_file#'~/'}" ;;
@@ -200,6 +203,17 @@ add_to_path() {
     fi
 }
 
+command_wrapper_owned() {
+    local target="$1"
+    [[ -f "$target" && ! -L "$target" ]] || return 1
+    grep -Fq '# Auto-generated wrapper by workBenches installer' "$target"
+}
+
+command_wrapper_matches() {
+    local target="$1" script_filename="$2"
+    command_wrapper_owned "$target" && grep -Fq "scripts/$script_filename" "$target"
+}
+
 # Create wrapper script for a command
 create_command_wrapper() {
     local command_name="$1"
@@ -209,6 +223,12 @@ create_command_wrapper() {
     
     # Get the actual script file name from the original path
     local script_filename=$(basename "$original_path")
+    if [[ -e "$install_path/$command_name" || -L "$install_path/$command_name" ]]; then
+        if ! command_wrapper_matches "$install_path/$command_name" "$script_filename"; then
+            print_warning "Preserved unowned command: $install_path/$command_name"
+            return 1
+        fi
+    fi
     
     # Create wrapper script
     cat > "$install_path/$command_name" << EOF
@@ -232,6 +252,8 @@ if [ -z "\$WORKBENCHES_ROOT" ] || [ ! -f "\$WORKBENCHES_ROOT/scripts/$script_fil
     # Try to find workBenches in common locations
     SEARCH_PATHS=(
         "$WORKBENCHES_ROOT"
+        "\$HOME/Projects/openBenches"
+        "\$HOME/projects/openBenches"
         "\$HOME/projects/workBenches"
         "\$HOME/workBenches"
         "\$HOME/Projects/workBenches"
@@ -318,7 +340,7 @@ install_commands() {
     # Install the authoritative executable; do not replace it with a wrapper.
     # A skip is successful but does not authorize project-dependent wrappers.
     local project_available=false
-    if [ "${WORKBENCHES_SKIP_PROJECT_COMMAND:-0}" = "1" ]; then
+    if [ "$(openbenches_resolve_env SKIP_PROJECT_COMMAND)" = "1" ]; then
         print_warning "Project command was skipped; preserving any existing command and omitting onp"
     else
         python3 -I "$SCRIPT_DIR/setup-project-command.py" \
@@ -371,7 +393,7 @@ install_commands() {
             "delete-workspace")
                 source_script="$SCRIPT_DIR/delete-workspace.sh"
                 ;;
-            "setup-workbenches")
+            "setup-workbenches"|"setup-openbenches")
                 source_script="$SCRIPT_DIR/setup-workbenches.sh"
                 ;;
             "update-bench-config")
@@ -481,7 +503,11 @@ uninstall_commands() {
             if [ "$cmd_name" = "onp" ]; then
                 continue
             fi
-            if [ -f "$location/$cmd_name" ]; then
+            if [ -f "$location/$cmd_name" ] || [ -L "$location/$cmd_name" ]; then
+                if ! command_wrapper_owned "$location/$cmd_name"; then
+                    print_warning "Preserved unowned command: $location/$cmd_name"
+                    continue
+                fi
                 print_info "Removing $cmd_name from: $location"
                 rm -f "$location/$cmd_name"
                 

@@ -60,6 +60,46 @@ run_launcher_case() {
     fi
     [[ -z "${CASE_EXTRA_HOST_DIRECTORY:-}" ]] || mkdir -p "$fake_home/$CASE_EXTRA_HOST_DIRECTORY"
     cp "$repo_root/user-layer/claude-npm-guard" "$fake_root/user-layer/claude-npm-guard"
+    if [[ "${CASE_PROFILE_BUNDLE:-false}" == true ]]; then
+        mkdir -p "$fake_root/base-image/files"
+        cp "$repo_root/base-image/files/codex-profile" "$fake_root/base-image/files/codex-profile"
+        cp "$repo_root/base-image/files/openbenches-compat.sh" "$fake_root/base-image/files/openbenches-compat.sh"
+        local hash_launchers=(
+            "$fake_root/base-image/files/claude-profile"
+            "$fake_root/base-image/files/pclaude"
+            "$fake_root/base-image/files/lclaude"
+            "$fake_root/base-image/files/codex-profile"
+            "$fake_root/base-image/files/opencode-profile"
+            "$fake_root/base-image/files/workbenches-mcp-sync"
+            "$fake_root/base-image/files/provider-profile"
+            "$fake_root/base-image/files/pi-profile"
+            "$fake_root/user-layer/claude-npm-guard"
+        )
+        local bundle_file
+        CASE_CURRENT_LAUNCHER_HASH="$(
+            for bundle_file in "$fake_root/base-image/files/openbenches-compat.sh" "${hash_launchers[@]}"; do
+                if [[ -f "$bundle_file" ]]; then
+                    sha256sum "$bundle_file" | awk '{print $1}'
+                else
+                    printf '%s\n' missing
+                fi
+            done | sha256sum | awk '{print $1}'
+        )"
+        local installed_launcher_hash="${CASE_INSTALLED_LAUNCHER_HASH:-}"
+        if [[ "${CASE_STALE_LAUNCHER_MARKER:-false}" == true ]]; then
+            installed_launcher_hash="$(
+                for bundle_file in "${hash_launchers[@]}"; do
+                    if [[ -f "$bundle_file" ]]; then
+                        sha256sum "$bundle_file" | awk '{print $1}'
+                    else
+                        printf '%s\n' missing
+                    fi
+                done | sha256sum | awk '{print $1}'
+            )"
+        elif [[ "${CASE_CURRENT_LAUNCHER_MARKER:-false}" == true ]]; then
+            installed_launcher_hash="$CASE_CURRENT_LAUNCHER_HASH"
+        fi
+    fi
     if [[ -n "${CASE_OPENCODE_PROFILE:-}" ]]; then
         mkdir -p "$fake_root/base-image/files" "$fake_home/.config/workbenches"
         : > "$fake_root/base-image/files/opencode-profile"
@@ -129,6 +169,11 @@ PREPARE
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "$MOCK_DOCKER_LOG"
+
+if [[ "${1:-}" == exec && "${!#}" == "cat '/usr/local/share/workbenches/profile-launchers.sha256' 2>/dev/null" ]]; then
+    printf '%s\n' "$MOCK_INSTALLED_LAUNCHER_HASH"
+    exit 0
+fi
 
 # Execute the actual verification body for profile cases instead of assuming
 # docker exec succeeds. Map only the container's history path to this fixture.
@@ -298,9 +343,10 @@ MOCK
     output="$(
         env \
             HOME="$fake_home" \
-            USER=tester \
+            USER="${CASE_HOST_USER:-tester}" \
             PATH="$mock_bin:$PATH" \
             MOCK_DOCKER_LOG="$docker_log" \
+            MOCK_INSTALLED_LAUNCHER_HASH="${installed_launcher_hash:-}" \
             MOCK_OPENCODE_PROFILE="${CASE_OPENCODE_PROFILE:-}" \
             MOCK_EXPECT_ENV_DIR="$expected_env_dir" \
             WAVE_WSLG_ROOT="$wslg_root" \
@@ -768,3 +814,32 @@ grep -q '.pi-profiles' "$prepared_file" || fail 'first-start override omitted pr
 if grep -Eq '^exec |^rm | up ' <<<"$CASE_DOCKER_LOG"; then fail 'preparing first-start mounts changed container lifecycle'; fi
 rm -f "$prepared_file"
 echo 'PASS: first-start mount preparation does not create or replace containers'
+
+CASE_PROFILE_BUNDLE=true CASE_STALE_LAUNCHER_MARKER=true \
+    run_launcher_case stale-profile-bundle true complete false false py-bench
+helper_copy="$(grep -nE '^cp .*/base-image/files/openbenches-compat.sh py-bench:/usr/local/share/workbenches/openbenches-compat.sh$' <<<"$CASE_DOCKER_LOG" | cut -d: -f1 || true)"
+codex_copy="$(grep -nE '^cp .*/base-image/files/codex-profile py-bench:/usr/local/bin/codex-profile$' <<<"$CASE_DOCKER_LOG" | cut -d: -f1 || true)"
+[[ "$helper_copy" =~ ^[0-9]+$ ]] || fail 'stale launcher marker did not install the compatibility helper'
+[[ "$codex_copy" =~ ^[0-9]+$ ]] || fail 'stale launcher marker did not replace the Codex launcher'
+(( helper_copy < codex_copy )) || fail 'Wave replaced a launcher before installing its compatibility helper'
+grep -F "'$CASE_CURRENT_LAUNCHER_HASH'" <<<"$CASE_DOCKER_LOG" >/dev/null \
+    || fail 'Wave marker does not include the compatibility helper in the bundle hash'
+
+CASE_PROFILE_BUNDLE=true CASE_CURRENT_LAUNCHER_MARKER=true \
+    run_launcher_case current-profile-bundle true complete false false py-bench
+if grep -Eq '^cp .*/(openbenches-compat.sh|codex-profile) ' <<<"$CASE_DOCKER_LOG"; then
+    fail 'current launcher marker caused compatibility files to be replaced again'
+fi
+echo 'PASS: Wave refreshes compatibility helpers before launchers and honors current markers'
+
+prepared_file="$(mktemp)"
+CASE_HOST_USER=hostuser CASE_CONTAINER_EXISTS=false CASE_LAYER2_EXISTS=false \
+    run_launcher_case config-destination-user false missing false false py-bench \
+        --user benchuser --prepare-compose "$prepared_file"
+grep -F ':/home/benchuser/.config/workbenches:ro' "$prepared_file" >/dev/null \
+    || fail 'configuration mount did not follow the parsed container user'
+if grep -F '/home/hostuser/.config/workbenches' "$prepared_file" >/dev/null; then
+    fail 'configuration mount retained the host user after --user parsing'
+fi
+rm -f "$prepared_file"
+echo 'PASS: Wave configuration destination follows the selected container user'

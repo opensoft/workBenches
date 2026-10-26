@@ -64,6 +64,25 @@ class InstallTests(unittest.TestCase):
         self.assertEqual((self.bin / ".workbenches-path").read_text().strip(), str(self.wb))
         self.assertEqual(self.discovery.read_text().strip(), str(self.bin.resolve()))
 
+    def test_checkout_root_flag_aliases_share_one_install_and_refuse_conflicts(self):
+        for flag in ('--workbenches', '--openbenches', '--workbenches-root', '--openbenches-root'):
+            with self.subTest(flag=flag):
+                self.assertEqual(installer.main([
+                    '--pin', str(self.pin), '--bin-dir', str(self.bin), flag, str(self.wb),
+                    '--source', str(self.source),
+                ]), 0)
+                self.assertEqual((self.bin / '.workbenches-path').read_text().strip(), str(self.wb))
+        before = (self.bin / 'project').read_bytes()
+        self.assertEqual(installer.main([
+            '--pin', str(self.pin), '--bin-dir', str(self.bin),
+            '--workbenches-root', str(self.wb), '--openbenches-root', str(self.base / 'other'),
+            '--source', str(self.source),
+        ]), 2)
+        self.assertEqual((self.bin / 'project').read_bytes(), before)
+        with patch.dict(os.environ, {'OPENBENCHES_PROJECT_DISCOVERY_FILE': str(self.base / 'conflict')}):
+            self.assertEqual(self.install(), 2)
+        self.assertEqual((self.bin / 'project').read_bytes(), before)
+
     def test_corrupt_source_leaves_installed_command_unchanged(self):
         self.assertEqual(self.install(), 0)
         original = (self.bin / "project").read_bytes()
@@ -1418,6 +1437,36 @@ raise SystemExit(module.main({[*self.args, "--remove"]!r}))
                                  text=True, capture_output=True)
         self.assertEqual(invoked.returncode, 0, invoked.stderr)
         self.assertEqual(json.loads(invoked.stdout), ["new", "Global"])
+
+    @unittest.skipUnless(MODERN_BASH,
+                         "command installer requires Bash 4 associative arrays")
+    def test_setup_aliases_share_one_entrypoint_and_preserve_foreign_commands(self):
+        home = self.base / 'setup-alias-home'
+        install_bin = home / '.local/bin'
+        env = {**os.environ, 'HOME': str(home), 'WORKBENCHES_SKIP_PROJECT_COMMAND': '1',
+               'PATH': str(install_bin) + os.pathsep + os.environ['PATH']}
+        command = [TEST_BASH, str(ROOT / 'scripts/install-workbench-commands.sh')]
+        result = subprocess.run([*command, '--install'], env=env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        setup = self.wb / 'scripts/setup-workbenches.sh'
+        setup.write_text('#!/bin/bash\nprintf "setup-alias:%s\\n" "$1"\n')
+        setup.chmod(0o755)
+        (install_bin / '.workbenches-path').write_text(str(self.wb) + '\n')
+        for alias in ('setup-workbenches', 'setup-openbenches'):
+            with self.subTest(alias=alias):
+                invoked = subprocess.run([str(install_bin / alias), 'fixture'], env=env,
+                                         text=True, capture_output=True)
+                self.assertEqual(invoked.returncode, 0, invoked.stderr)
+                self.assertEqual(invoked.stdout, 'setup-alias:fixture\n')
+        foreign = install_bin / 'setup-openbenches'
+        foreign.write_text('#!/bin/bash\necho foreign-setup\n')
+        foreign.chmod(0o755)
+        result = subprocess.run([*command, '--install'], env=env, text=True, capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('foreign-setup', foreign.read_text())
+        result = subprocess.run([*command, '--uninstall'], env=env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('foreign-setup', foreign.read_text())
 
     @unittest.skipUnless(MODERN_BASH,
                          "command installer requires Bash 4 associative arrays")

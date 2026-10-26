@@ -208,7 +208,7 @@ class SelectorTests(unittest.TestCase):
         self.repo = self.home / "repo"
         (self.repo / "scripts").mkdir(parents=True)
         (self.repo / "credential-container").mkdir()
-        for name in ("setup-credential-recovery.py", "setup_prompts.py", "profile_credentials.py"):
+        for name in ("setup-credential-recovery.py", "setup_prompts.py", "profile_credentials.py", "openbenches_compat.py"):
             shutil.copy(ROOT / "scripts" / name, self.repo / "scripts")
         (self.repo / "credential-container/credential_recovery.py").write_text("class RecoveryError(Exception): pass\ndef docker_ready(): pass\n")
         (self.repo / "scripts/recover-vault-credentials.py").write_text("import os,sys\nwith open(os.environ['TEST_LOG'],'a') as f: f.write(' '.join(sys.argv[1:])+'\\n')\nsys.exit(int(os.environ.get('TEST_EXIT','0')))\n")

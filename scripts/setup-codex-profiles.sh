@@ -2,7 +2,8 @@
 set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/workbenches"
+source "$repo_dir/scripts/lib/openbenches-compat.sh"
+config_dir="$(openbenches_config_root)"
 default_manifest="$config_dir/openai-profiles.json"
 manifest="${CODEX_PROFILES_MANIFEST:-${CHATGPT_PROFILES_MANIFEST:-$default_manifest}}"
 base="${CODEX_PROFILES_HOME:-${CHATGPT_PROFILES_HOME:-$HOME/.chatgpt-profiles}}"
@@ -258,7 +259,7 @@ while IFS=$'\t' read -r name family profile_path; do
   profile_dir="$base/profiles/$profile_path"
   legacy_profile_dir="$base/profiles/$name"
   state_dir="$base/state/$family"
-  if [[ "$profile_path" != "$name" && -d "$legacy_profile_dir" && ! -e "$profile_dir" ]]; then
+  if [[ "$profile_path" != "$name" && -d "$legacy_profile_dir" && ! -e "$profile_dir" && "$legacy_profile_dir" != "$(dirname "$profile_dir")" ]]; then
     mkdir -p "$(dirname "$profile_dir")"
     cp -a "$legacy_profile_dir" "$profile_dir"
   fi
@@ -310,7 +311,9 @@ done < <(jq -r '.profiles[] | [.name, .family, (.profilePath // .name)] | @tsv' 
 mkdir -p "$HOME/.local/bin"
 ln -sfn "$repo_dir/scripts/codex-profile" "$HOME/.local/bin/codex-profile"
 ln -sfn "$repo_dir/scripts/codex-profile" "$HOME/.local/bin/pcodex"
-ln -sfn "$repo_dir/scripts/workbenches-mcp-sync" "$HOME/.local/bin/workbenches-mcp-sync"
+for mcp_command in workbenches-mcp-sync openbenches-mcp-sync; do
+  openbenches_link_command "$repo_dir/scripts/workbenches-mcp-sync" "$HOME/.local/bin/$mcp_command"
+done
 echo "Codex profiles configured under $base"
 echo "Run: codex-profile list"
 echo "Then: codex-profile login PROFILE"

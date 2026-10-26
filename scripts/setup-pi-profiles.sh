@@ -3,7 +3,8 @@ set -euo pipefail
 umask 077
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/workbenches"
+source "$repo_dir/scripts/lib/openbenches-compat.sh"
+config_dir="$(openbenches_config_root)"
 manifest="${PI_PROFILES_MANIFEST:-$config_dir/pi-profiles.json}"
 base="${PI_PROFILES_HOME:-$HOME/.pi-profiles}"
 
@@ -64,7 +65,7 @@ link_path() {
 while IFS=$'\t' read -r name email family profile_path aliases providers; do
   profile_dir="$base/profiles/$profile_path"
   legacy_profile_dir="$base/profiles/$name"
-  if [[ "$profile_path" != "$name" && -d "$legacy_profile_dir" && ! -e "$profile_dir" ]]; then
+  if [[ "$profile_path" != "$name" && -d "$legacy_profile_dir" && ! -e "$profile_dir" && "$legacy_profile_dir" != "$(dirname "$profile_dir")" ]]; then
     mkdir -p "$(dirname "$profile_dir")"
     cp -a "$legacy_profile_dir" "$profile_dir"
   fi

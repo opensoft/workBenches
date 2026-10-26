@@ -7,6 +7,7 @@ from pathlib import Path
 import urllib.request
 import urllib.parse
 from release_validation import atomic, base_report, context, read
+from openbenches_compat import resolve_env
 
 
 def trusted_source(plan, fetch):
@@ -21,9 +22,16 @@ def trusted_source(plan, fetch):
 def readiness(plan, runners, configured, blocked_reason=None):
     ready, blocked = [], []
     for suite in plan['external']:
-        matching = [r for r in runners if r.get('status') == 'online' and not r.get('busy') and
-                    set(suite['labels']) <= {label['name'] for label in r.get('labels', [])}]
-        if configured and matching: ready.append(suite)
+        selected = None
+        for labels in suite.get('labelRoutes', [suite['labels']]):
+            matching = [r for r in runners if r.get('status') == 'online' and not r.get('busy') and
+                        set(labels) <= {label['name'] for label in r.get('labels', [])}]
+            if matching:
+                selected = dict(suite, labels=labels)
+                selected.pop('labelRoutes', None)
+                break
+        if configured and selected is not None:
+            ready.append(selected)
         else:
             report = base_report(suite['suite'], plan['source'])
             report['reason'] = blocked_reason or ('qa_configuration_missing' if not configured else 'matching_runner_unavailable')
@@ -38,9 +46,9 @@ def main():
     args = parser.parse_args()
     plan = read(args.plan)
     runners = []
-    token = os.environ.get('WB_QA_INVENTORY_TOKEN')
+    token = resolve_env('QA_INVENTORY_TOKEN', sensitive=True)
     repository = os.environ.get('GITHUB_REPOSITORY', '')
-    configured = os.environ.get('WB_QA_CONFIGURED') == 'true'
+    configured = resolve_env('QA_CONFIGURED', sensitive=True) == 'true'
     if token and repository:
         try:
             for page in range(1, 11):
@@ -56,7 +64,7 @@ def main():
     reason = None
     if configured:
         try:
-            source_token = os.environ['WB_SOURCE_READ_TOKEN']
+            source_token = resolve_env('SOURCE_READ_TOKEN', sensitive=True)
             def fetch(path):
                 request = urllib.request.Request('https://api.github.com/repos/' + repository + '/' + path,
                     headers={'Authorization':'Bearer ' + source_token, 'Accept':'application/vnd.github+json'})

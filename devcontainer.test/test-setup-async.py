@@ -130,7 +130,7 @@ draw_ui > "$1/repeated"
             files = {name: (Path(temporary) / name).read_bytes()
                      for name in ('first', 'unchanged', 'update', 'repeated')}
             self.assertEqual(files['first'].count(b'\x1b[2J'), 1)
-            version_header = f"workBenches v{(ROOT / 'VERSION').read_text().strip()}".encode()
+            version_header = f"openBenches v{(ROOT / 'VERSION').read_text().strip()}".encode()
             self.assertIn(version_header, files['first'])
             self.assertEqual(files['unchanged'], b'')
             self.assertEqual(files['repeated'], b'')
@@ -171,6 +171,25 @@ poll_status_loader
 '''
             result = subprocess.run(['bash', '-c', command, 'snapshot', temporary], capture_output=True, timeout=3)
             self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_tools_ready_emits_matching_endpoint_aliases(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            command = f'''source "{ROOT}/scripts/interactive-setup.sh"
+set -e
+workbenches_tools_use_shims() {{ :; }}
+status_loader_dir="$1"; status_checks_running=true; status_loader_pid=$$
+unset WB_DOCKER_ENDPOINT WORKBENCHES_DOCKER_ENDPOINT
+OPENBENCHES_DOCKER_ENDPOINT=''
+export OPENBENCHES_DOCKER_ENDPOINT
+printf '%s\n' 'unix:///tmp/openbenches-test.sock' > "$1/tools-ready"
+poll_status_loader
+[[ "$OPENBENCHES_DOCKER_ENDPOINT" == unix:///tmp/openbenches-test.sock ]]
+[[ "$WORKBENCHES_DOCKER_ENDPOINT" == "$OPENBENCHES_DOCKER_ENDPOINT" ]]
+resolved="$(openbenches_resolve_env --sensitive DOCKER_ENDPOINT)"
+[[ "$resolved" == "$OPENBENCHES_DOCKER_ENDPOINT" ]]
+'''
+            result = subprocess.run(['bash', '-c', command, 'loader', temporary], capture_output=True, text=True, timeout=3)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == '__main__':

@@ -136,7 +136,7 @@ poll_status_loader() {
     if [[ -f "$status_loader_dir/tools-ready" ]]; then
         IFS= read -r endpoint < "$status_loader_dir/tools-ready"
         if [[ "$endpoint" == unix:///* || "${WORKBENCHES_TEST_NATIVE_TOOLS:-}" == 1 ]]; then
-            [[ -z "$endpoint" ]] || export WORKBENCHES_DOCKER_ENDPOINT=$endpoint
+            [[ -z "$endpoint" ]] || export OPENBENCHES_DOCKER_ENDPOINT="$endpoint" WORKBENCHES_DOCKER_ENDPOINT="$endpoint"
             workbenches_tools_use_shims
         fi
         rm -f "$status_loader_dir/tools-ready"

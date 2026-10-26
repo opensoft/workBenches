@@ -186,4 +186,30 @@ jq -e '.mcpServers["from-codex"] == null' "$CLAUDE_PROFILE/.claude.json" >/dev/n
 [[ "$(stat -c '%a' "$WORKBENCHES_SHARED_MCP_HOME/opensoft/registry.json")" == 600 ]] \
   || fail "shared registry is not mode 0600"
 
+ALIAS_HOME="$TEST_ROOT/alias-home"
+mkdir -p "$ALIAS_HOME/.config/openbenches" "$ALIAS_HOME/.config/workbenches"
+cp "$REPO_ROOT/config/claude-profiles.example.json" "$ALIAS_HOME/.config/openbenches/claude-profiles.json"
+printf 'preserve\n' >"$ALIAS_HOME/.config/workbenches/preserve"
+HOME="$ALIAS_HOME" XDG_CONFIG_HOME="$ALIAS_HOME/.config" \
+CLAUDE_PROFILES_HOME="$ALIAS_HOME/claude-profiles" \
+  bash "$REPO_ROOT/scripts/setup-claude-profiles.sh" >/dev/null
+for alias in workbenches-mcp-sync openbenches-mcp-sync; do
+  [[ -L "$ALIAS_HOME/.local/bin/$alias" ]] || fail "missing MCP alias $alias"
+  [[ "$(readlink -f "$ALIAS_HOME/.local/bin/$alias")" == "$(readlink -f "$REPO_ROOT/scripts/workbenches-mcp-sync")" ]] \
+    || fail "MCP alias $alias does not reach the shared implementation"
+done
+[[ "$(cat "$ALIAS_HOME/.config/workbenches/preserve")" == preserve ]] \
+  || fail "selected-root setup changed the legacy tree"
+rm -f "$ALIAS_HOME/.local/bin/openbenches-mcp-sync"
+printf 'foreign\n' >"$ALIAS_HOME/.local/bin/openbenches-mcp-sync"
+if HOME="$ALIAS_HOME" XDG_CONFIG_HOME="$ALIAS_HOME/.config" \
+CLAUDE_PROFILES_HOME="$ALIAS_HOME/claude-profiles" \
+  bash "$REPO_ROOT/scripts/setup-claude-profiles.sh" >/dev/null 2>&1; then
+  fail "MCP alias collision unexpectedly succeeded"
+fi
+[[ "$(cat "$ALIAS_HOME/.local/bin/openbenches-mcp-sync")" == foreign ]] \
+  || fail "MCP alias collision replaced a foreign command"
+grep -Fq 'ln -sfn workbenches-mcp-sync /usr/local/bin/openbenches-mcp-sync' \
+  "$REPO_ROOT/base-image/Dockerfile" || fail "image does not expose the canonical MCP alias"
+
 echo "shared MCP profile tests passed"

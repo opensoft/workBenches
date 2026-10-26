@@ -46,7 +46,7 @@ def build_dev_image(tag, parent, platform):
                  '--build-arg', 'BASE_IMAGE=' + refs[0],
                  '--label', shared.LABEL + '=' + shared.fingerprint('dev'),
                  '--label', 'io.workbenches.parent=' + parent,
-                 '--label', 'org.opencontainers.image.source=https://github.com/opensoft/workBenches',
+                 '--label', 'org.opencontainers.image.source=https://github.com/opensoft/openBenches',
                  '--output', 'type=registry,name=' + tag + ',compression=gzip,compression-level=1',
                  str(ROOT / shared.CONTEXTS['dev'])])
         finally:

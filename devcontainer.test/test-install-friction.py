@@ -57,6 +57,20 @@ class ImageTests(unittest.TestCase):
         module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
         self.assertEqual(module.shared.release_tag(),shared.release_tag())
 
+    def test_image_source_metadata_changes_only_the_standard_source_url(self):
+        expected = 'org.opencontainers.image.source=https://github.com/opensoft/openBenches'
+        legacy = 'org.opencontainers.image.source=https://github.com/opensoft/workBenches'
+        for path in ('base-image/build.sh', 'devBenches/base-image/build.sh', 'scripts/publish-shared-images.py'):
+            with self.subTest(path=path):
+                contents = (ROOT / path).read_text()
+                self.assertIn(expected, contents)
+                self.assertNotIn(legacy, contents)
+        self.assertEqual(shared.LABEL, 'io.workbenches.source')
+        self.assertEqual(shared.REGISTRIES, {
+            'base': 'ghcr.io/opensoft/workbenches-base',
+            'dev': 'ghcr.io/opensoft/workbenches-dev-base'})
+        self.assertIn("manifest.get('schemaVersion') != 1", (ROOT / 'scripts/shared-images.py').read_text())
+
     def test_publisher_accepts_exact_old_and_new_repository_slugs(self):
         spec=importlib.util.spec_from_file_location('publisher',ROOT/'scripts/publish-shared-images.py')
         module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)

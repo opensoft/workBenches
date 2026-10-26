@@ -22,6 +22,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 100
     env:
+      OPENBENCHES_AUTOMATION_SHA: ${{ inputs.automation_sha }}
       WB_AUTOMATION_SHA: ${{ inputs.automation_sha }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262

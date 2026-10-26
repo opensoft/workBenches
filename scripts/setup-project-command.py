@@ -15,25 +15,29 @@ import sys
 import tempfile
 import urllib.error
 import urllib.request
+import importlib.util
 
 try:
     import workbenches_host as host
 except ImportError:
     host = None
-    if os.environ.get("WORKBENCHES_HOST_RPC"):
+    if os.environ.get("WORKBENCHES_HOST_RPC") or os.environ.get("OPENBENCHES_HOST_RPC"):
         raise
 
 ROOT = Path(__file__).resolve().parents[1]
+COMPAT_SPEC = importlib.util.spec_from_file_location(
+    "openbenches_compat", ROOT / "scripts/openbenches_compat.py")
+compat = importlib.util.module_from_spec(COMPAT_SPEC)
+COMPAT_SPEC.loader.exec_module(compat)
 LOCK_NAME = ".workbenches-project.lock"
 PAYLOAD_NAME = ".workbenches-project.payload"
 REMOVAL_JOURNAL_NAME = ".workbenches-project.remove.json"
 
 
 def project_discovery_path():
-    configured = os.environ.get(
-        "WORKBENCHES_PROJECT_DISCOVERY_FILE",
-        str(Path.home() / ".config/workbenches/project-bin"),
-    )
+    configured = compat.resolve_env(
+        "PROJECT_DISCOVERY_FILE", str(compat.config_root() / "project-bin"),
+        sensitive=True)
     path = Path(configured).expanduser()
     if not path.is_absolute():
         raise ValueError("WORKBENCHES_PROJECT_DISCOVERY_FILE must be absolute")
@@ -911,8 +915,9 @@ def main(argv=None):
     parser.add_argument("--bin-dir", type=Path, default=Path(os.environ.get("OPENREPOPROJECT_BIN_DIR", str(Path.home() / ".local/bin"))))
     parser.add_argument("--pin", type=Path, default=Path(os.environ.get(
         "OPENREPOPROJECT_PIN", ROOT / "config/openrepoproject-pin.json")))
-    parser.add_argument("--workbenches", type=Path, default=Path(os.environ.get(
-        "WORKBENCHES_ROOT", ROOT)))
+    parser.add_argument("--workbenches", "--openbenches", "--workbenches-root",
+                        "--openbenches-root", dest="workbench_roots", type=Path,
+                        action="append", default=[])
     parser.add_argument("--replace-existing", action="store_true",
                         help="replace a non-workBenches project command after explicit approval")
     parser.add_argument("--install-onp", action="store_true",
@@ -930,7 +935,7 @@ def main(argv=None):
                            help="verify and execute the owned command while holding a shared lock")
     parser.add_argument("command_args", nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
-    if (os.environ.get("WORKBENCHES_SKIP_PROJECT_COMMAND") == "1"
+    if (compat.resolve_env("SKIP_PROJECT_COMMAND") == "1"
             and not args.resolve_owned and not args.resolve_onp_owned
             and not args.exec_owned and not args.remove):
         print("project installation skipped by WORKBENCHES_SKIP_PROJECT_COMMAND=1")
@@ -938,6 +943,11 @@ def main(argv=None):
     staged = []
     lock_descriptor = None
     try:
+        root_values = [str(path) for path in args.workbench_roots]
+        if len(set(root_values)) > 1:
+            raise ValueError("Conflicting old/new checkout root flags; use one identical value")
+        args.workbenches = (args.workbench_roots[-1] if args.workbench_roots else
+                            Path(compat.resolve_env("ROOT", str(ROOT), sensitive=True)))
         pin = json.loads(args.pin.read_text())
         trusted_previous = pin.get("trusted_previous", []) if isinstance(pin, dict) else None
         if (not isinstance(pin, dict) or pin.get("schema_version") != 1

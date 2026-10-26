@@ -57,7 +57,10 @@ LAUNCHER_SOURCE="$LAUNCHER"
 # that is itself a claude-profile-launched tmux child — must not reach the
 # launcher: every scenario below sets the tmux and lane state it means to test.
 unset TMUX TMUX_PANE WORKBENCHES_CLAUDE_TMUX WORKBENCHES_CLAUDE_TMUX_CHILD \
-    WORKBENCHES_CLAUDE_WINDOW WORKBENCHES_TMUX_SESSION WORKBENCHES_TMUX_PANE \
+    WORKBENCHES_CLAUDE_WINDOW WORKBENCHES_CLAUDE_WINDOW_REF WORKBENCHES_CLAUDE_WINDOW_ID \
+    OPENBENCHES_CLAUDE_TMUX_CHILD OPENBENCHES_CLAUDE_WINDOW OPENBENCHES_CLAUDE_WINDOW_REF \
+    OPENBENCHES_CLAUDE_WINDOW_ID OPENBENCHES_CLAUDE_LANE OPENBENCHES_CLAUDE_LANE_SOURCE \
+    OPENBENCHES_CLAUDE_LANE_DIR WORKBENCHES_TMUX_SESSION WORKBENCHES_TMUX_PANE \
     CLAUDE_LANE CLAUDE_NO_LANE LANES_WORKSTATION LANES_HOST LANES_OS \
     LANES_CONTAINER 2>/dev/null || true
 
@@ -79,7 +82,7 @@ fail() {
 # quietly changing a number; the assertion count is printed and not pinned,
 # because checks are added to existing scenarios all the time and a scenario
 # that stops running is the thing worth catching.
-EXPECTED_SCENARIOS=49
+EXPECTED_SCENARIOS=51
 scenarios=0
 assertions=0
 scenario() { scenarios=$((scenarios + 1)); }
@@ -876,6 +879,32 @@ grep -Fxq -- "openRepoProject-1 -- $claude_args --resume session-child" "$LANE_S
     || fail "tmux child: the carried window name was not the lane ('$(lane_start_argv)')"; assertion
 grep -Fxq 'display-message -p #W' "$TMUX_LOG" \
     && fail "tmux child: the launcher asked tmux for the new session's window name"; assertion
+
+launch \
+    "OPENBENCHES_CLAUDE_TMUX_CHILD=1" \
+    "OPENBENCHES_CLAUDE_WINDOW=openRepoProject-1" \
+    "FAKE_TMUX_WINDOW=claude-team-002-20260912170400-1234" \
+    "FAKE_LANE_WITH_ROW=openRepoProject-1" \
+    "FAKE_SWAPPED_STATUS=8" \
+    -- run team002 --resume session-child-openbenches
+grep -Fxq -- "openRepoProject-1 -- $claude_args --resume session-child-openbenches" "$LANE_START_LOG" \
+    || fail "openBenches child: the canonical handoff did not preserve the lane ('$(lane_start_argv)')"; assertion
+grep -Fxq 'display-message -p #W' "$TMUX_LOG" \
+    && fail "openBenches child: the launcher asked tmux for the new session's window name"; assertion
+grep -Fq 'OPENBENCHES_CLAUDE_WINDOW=' "$LAUNCHER_SOURCE" \
+    || fail "openBenches handoff: the canonical alias is not emitted beside the legacy form"; assertion
+
+launch \
+    "WORKBENCHES_CLAUDE_TMUX_CHILD=1" \
+    "OPENBENCHES_CLAUDE_WINDOW=openRepoProject-1" \
+    "WORKBENCHES_CLAUDE_WINDOW=different-lane-9" \
+    -- run team002 --resume session-conflicting-handoff
+[[ "$launch_status" -eq 2 ]] \
+    || fail "conflicting handoff: expected a refusal, got $launch_status"; assertion
+grep -Fq 'OPENBENCHES_CLAUDE_WINDOW and WORKBENCHES_CLAUDE_WINDOW differ' "$ERR_LOG" \
+    || fail "conflicting handoff: the conflict was not actionable ($(cat "$ERR_LOG"))"; assertion
+[[ ! -e "$LANE_START_LOG" ]] \
+    || fail "conflicting handoff: a lane was selected from conflicting aliases ('$(lane_start_argv)')"; assertion
 
 # With nothing carried across, a child resolves no window lane at all — even
 # when the new session's window happens to be named like one.

@@ -188,7 +188,7 @@ COPY files/lclaude /usr/local/bin/lclaude
 COPY files/codex-profile /usr/local/bin/codex-profile
 COPY files/opencode-profile /usr/local/bin/opencode-profile
 COPY files/workbenches-mcp-sync /usr/local/bin/workbenches-mcp-sync
-COPY --chmod=0644 files/company-profile-sync.sh /usr/local/share/workbenches/company-profile-sync.sh
+COPY --chmod=0644 files/company-profile-sync.sh files/openbenches-compat.sh /usr/local/share/workbenches/
 COPY files/provider-profile /usr/local/bin/provider-profile
 COPY files/pi-profile /usr/local/bin/pi-profile
 COPY files/claude-statusline-command.sh /usr/local/share/workbenches/claude/statusline-command.sh
@@ -206,6 +206,7 @@ RUN chmod 0755 /usr/local/bin/claude-profile \
     && ln -sfn codex-profile /usr/local/bin/pcodex \
     && ln -sfn opencode-profile /usr/local/bin/popencode \
     && ln -sfn pi-profile /usr/local/bin/ppi \
+    && ln -sfn workbenches-mcp-sync /usr/local/bin/openbenches-mcp-sync \
     && ln -sfn provider-profile /usr/local/bin/gemini-profile \
     && ln -sfn provider-profile /usr/local/bin/pgemini \
     && ln -sfn provider-profile /usr/local/bin/grok-profile \

@@ -1,4 +1,4 @@
-# workBenches
+# openBenches
 
 Release tracking starts at **v1.5.0**. Run `./setup.sh --version` to identify
 this checkout. See [the release process](docs/releases.md) for source freezes,
@@ -7,7 +7,7 @@ immutable release tags, pinned installations, and validation requirements.
 ## Project command
 
 Generic project creation now lives in
-[openRepoProject](https://github.com/opensoft/openRepoProject). workBenches
+[openRepoProject](https://github.com/opensoft/openRepoProject). openBenches
 installs its `project` executable during setup and command installation:
 
 ```sh
@@ -54,9 +54,13 @@ Use `--source /path/to/openRepoProject/project` for offline installation of the
 same pinned bytes, `--bin-dir PATH` for another command directory, or
 `WORKBENCHES_SKIP_PROJECT_COMMAND=1` to skip. The installer records this checkout
 in the host-local `.workbenches-path` beside the command and records the selected
-command directory in `~/.config/workbenches/project-bin`. Checkout legacy
-entrypoints use that verified pointer when the custom directory is no longer on
-`PATH`; `WORKBENCHES_ROOT` overrides checkout discovery at runtime.
+command directory under the selected configuration root: `openbenches` when that
+directory exists, otherwise `workbenches` (also the default when neither exists).
+The roots are never merged or moved automatically. `--openbenches-root` and
+`--workbenches-root` are equivalent checkout flags. `OPENBENCHES_ROOT` takes
+precedence over `WORKBENCHES_ROOT`; equal aliases are accepted and conflicting
+sensitive old/new settings are refused. Legacy entrypoints use the verified
+pointer when the custom command directory is no longer on `PATH`.
 
 When advancing the pin, first copy the current `commit` and `sha256` pair into
 the `trusted_previous` array. Then publish the tested source commit, obtain
@@ -64,7 +68,7 @@ the `trusted_previous` array. Then publish the tested source commit, obtain
 `commit` and `sha256` fields in the same change. Retain each previous pair only
 for the upgrade window in which an existing installer-owned payload must be
 recognized. If the source PR will squash-merge, re-pin to the resulting main
-commit before landing the workBenches integration. Never adjust a digest to
+commit before landing the openBenches integration. Never adjust a digest to
 accept drift.
 
 Offline integration tests: `python3 devcontainer.test/test-project-command.py`
@@ -124,7 +128,7 @@ After setup, open any bench in VS Code → "Reopen in Container" to start develo
 
 ### Re-running setup.sh
 
-Installed items show their status and default to no changes. Space selects an install/update and pressing it again undoes the selection. D selects removal and pressing it again undoes removal. Only explicit selections are applied; an unchanged selection exits without host setup or builds. Bench checkout deletion requires a focused confirmation and refuses local changes, untracked/ignored files, local-only commits, or use by a running container. Docker images, volumes, and credentials are preserved. For selected bench installs or organization workspace setup, the estate commands (`openRepoShape`, `openRepoTools`, `park`, `resume`, `status` and the five lane tools) are checked against workBenches' pin and are re-placed only when a host copy differs from it. The optional workspace repository step does nothing at all once you have one: it is a file test on `~/.agents/workspace.yaml`, so that step skips an existing workspace without asking questions or contacting the network.
+Installed items show their status and default to no changes. Space selects an install/update and pressing it again undoes the selection. D selects removal and pressing it again undoes removal. Only explicit selections are applied; an unchanged selection exits without host setup or builds. Bench checkout deletion requires a focused confirmation and refuses local changes, untracked/ignored files, local-only commits, or use by a running container. Docker images, volumes, and credentials are preserved. For selected bench installs or organization workspace setup, the estate commands (`openRepoShape`, `openRepoTools`, `park`, `resume`, `status` and the five lane tools) are checked against openBenches' pin and are re-placed only when a host copy differs from it. The optional workspace repository step does nothing at all once you have one: it is a file test on `~/.agents/workspace.yaml`, so that step skips an existing workspace without asking questions or contacting the network.
 
 ## Docker Image Layers
 
@@ -196,7 +200,7 @@ setup.sh
   ├── Selected bench dependencies: shared commands → Layer 0 → family Layer 1
   ├── Install/update selected components
   ├── Optional Shell setup / Org workspace
-  ├── Optional workBenches account: organization Keycloak browser approval
+  ├── Optional openBenches account: organization Keycloak browser approval
   ├── Optional AI accounts: profiles, direct login or confirmed vault recovery
   └── Summary + authentication pending where applicable + log path
 ```
@@ -211,7 +215,7 @@ contexts use their configured daemon and local access policy.
 See [Workstation requirements and optional accounts](docs/setup-requirements.md)
 for Windows guidance and organization Keycloak configuration.
 
-Your host's `openRepoShape`, `openRepoTools`, `park`, `resume`, `status`, `lane`, `lanes`, `lane-handoff`, `lane-rename`, `lanes-edit.sh`, `lane-start`, `lane-end`, `link-estates`, `repos.tsv`, `claude-current` and `claude-restart-check` come from workBenches' own pin (`devBenches/base-image/upstream-pin.yaml`). `setup.sh` places them from the vendored copies in `devBenches/base-image/files/openreposhape/` and `devBenches/base-image/files/openrepotools/`, and re-places them whenever a host copy differs from the pin, in either direction — behind, ahead, or hand-edited. To move them to a new upstream commit, move the pin with `update-upstream.py apply` and re-run `setup.sh`; do not edit the vendored files or the installed commands directly. The step refuses to run over a symlinked, non-regular, or read-only target, and verifies the fifteen placed openRepoTools files (and openRepoShape's own) against the vendored copies before it reports success. It also holds `openRepoShape` on the release the pin names, the way the dev-bench image holds its own: the install writes the pin's `openreposhape` commit to `openRepoShape.ref` beside the placed command (`${OPENREPOSHAPE_BIN_DIR:-~/.local/bin}/openRepoShape.ref`), fetching nothing to do it, so the command fetches `setup.sh` and clones the standard at that commit instead of following openRepoShape's `main`, and `openRepoShape --version` prints it. A record already there — left by the one-line installer, by an earlier run of this step, or by a stray `OPENREPOSHAPE_RECORD_REF=1` in your shell — is replaced, never removed, and this step does not read `OPENREPOSHAPE_RECORD_REF` or `OPENREPOSHAPE_REF` from your shell; it refuses a symlinked, non-regular or unreadable record, and refuses to report success unless the record holds the pin's commit. Set `WORKBENCHES_SKIP_ESTATE_COMMANDS=1` to skip this step.
+Your host's `openRepoShape`, `openRepoTools`, `park`, `resume`, `status`, `lane`, `lanes`, `lane-handoff`, `lane-rename`, `lanes-edit.sh`, `lane-start`, `lane-end`, `link-estates`, `repos.tsv`, `claude-current` and `claude-restart-check` come from openBenches' own pin (`devBenches/base-image/upstream-pin.yaml`). `setup.sh` places them from the vendored copies in `devBenches/base-image/files/openreposhape/` and `devBenches/base-image/files/openrepotools/`, and re-places them whenever a host copy differs from the pin, in either direction — behind, ahead, or hand-edited. To move them to a new upstream commit, move the pin with `update-upstream.py apply` and re-run `setup.sh`; do not edit the vendored files or the installed commands directly. The step refuses to run over a symlinked, non-regular, or read-only target, and verifies the fifteen placed openRepoTools files (and openRepoShape's own) against the vendored copies before it reports success. It also holds `openRepoShape` on the release the pin names, the way the dev-bench image holds its own: the install writes the pin's `openreposhape` commit to `openRepoShape.ref` beside the placed command (`${OPENREPOSHAPE_BIN_DIR:-~/.local/bin}/openRepoShape.ref`), fetching nothing to do it, so the command fetches `setup.sh` and clones the standard at that commit instead of following openRepoShape's `main`, and `openRepoShape --version` prints it. A record already there — left by the one-line installer, by an earlier run of this step, or by a stray `OPENREPOSHAPE_RECORD_REF=1` in your shell — is replaced, never removed, and this step does not read `OPENREPOSHAPE_RECORD_REF` or `OPENREPOSHAPE_REF` from your shell; it refuses a symlinked, non-regular or unreadable record, and refuses to report success unless the record holds the pin's commit. Set `WORKBENCHES_SKIP_ESTATE_COMMANDS=1` to skip this step.
 
 ## Your Workspace Repository
 
@@ -252,7 +256,7 @@ Tests: `devcontainer.test/test-setup-workspace-repo.sh` (110 checks; fakes `open
 ## Wave Terminal Widgets
 
 `setup.sh` runs the Wave Terminal installer as a best-effort host setup step so
-all workBenches checkouts get the same desktop shortcuts. The installer comes
+all openBenches checkouts get the same desktop shortcuts. The installer comes
 from `opensoft/Install-Wave-Terminal`; setup prefers a sibling
 `../Install-Wave-Terminal` checkout when present, then falls back to cloning it
 into `~/.cache/workbenches/Install-Wave-Terminal`.

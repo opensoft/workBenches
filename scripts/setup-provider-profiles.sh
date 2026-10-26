@@ -3,6 +3,7 @@ set -euo pipefail
 umask 077
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$repo_dir/scripts/lib/openbenches-compat.sh"
 provider=""
 manifest=""
 
@@ -29,7 +30,7 @@ case "$provider" in
     filename=grok-profiles.json
     base="${GROK_PROFILES_HOME:-$HOME/.grok-profiles}"
     if [[ -z "${GROK_PROFILES_HOME:-}" && -e "$base" && ! -w "$base" ]]; then
-      base="${XDG_DATA_HOME:-$HOME/.local/share}/workbenches/grok-profiles"
+      base="$(openbenches_data_root)/grok-profiles"
       printf 'Default Grok profile root is not writable; using %s\n' "$base" >&2
     fi
     launchers=(grok-profile pgrok)
@@ -42,7 +43,7 @@ case "$provider" in
   *) usage >&2; exit 2 ;;
 esac
 
-manifest="${manifest:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/$filename}"
+manifest="${manifest:-$(openbenches_config_root)/$filename}"
 command -v jq >/dev/null 2>&1 || { echo "jq is required." >&2; exit 1; }
 [[ -f "$manifest" ]] || { echo "Missing $provider profile manifest: $manifest" >&2; exit 1; }
 jq -e '
@@ -77,7 +78,7 @@ chmod 700 "$base" "$base/profiles"
 while IFS=$'\t' read -r name email family profile_path aliases; do
   profile_dir="$base/profiles/$profile_path"
   legacy_profile_dir="$base/profiles/$name"
-  if [[ "$profile_path" != "$name" && -d "$legacy_profile_dir" && ! -e "$profile_dir" ]]; then
+  if [[ "$profile_path" != "$name" && -d "$legacy_profile_dir" && ! -e "$profile_dir" && "$legacy_profile_dir" != "$(dirname "$profile_dir")" ]]; then
     mkdir -p "$(dirname "$profile_dir")"
     cp -a "$legacy_profile_dir" "$profile_dir"
   fi

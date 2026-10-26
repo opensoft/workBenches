@@ -13,14 +13,14 @@ Status values: `pending`, `in-progress`, `ready`, `landed`, `verified`, `blocked
 | Install-Wave-Terminal | New/old checkout discovery and root aliases; preserve generated artifacts and caches | Consumer first | landed — opensoft/Install-Wave-Terminal#6 merged as `b4cbc56`; compatibility, generated-widget, lifecycle, syntax, and ShellCheck checks pass |
 | pyBench | Config/lib/state mount compatibility and checkout CI slug update | Consumer first, then immediate slug sweep | landed — opensoft/pyBench#8 merged as `b105c4a`; 19 mount cases, devcontainer checks, and disposable Docker lifecycle with literal-dollar/apostrophe paths pass |
 | cloudBench | Config mount compatibility and checkout CI slug update | Consumer first, then immediate slug sweep | landed — opensoft/cloudBench#9 merged as `f24a323`; mount matrix including spaced initialization, 21 existing tests, read-only bind smoke, and immutable bench checker pass |
-| openRepoTools | New-first/legacy lane-handoff environment reads; canonical/legacy repo aliases after cutover | Consumer first, then immediate slug sweep | landed — opensoft/openRepoTools#341 merged as `ee07c0e`; Codex review clean; 262 handoff tests and 4,891 shell checks pass; required `tests` and `tests-no-submodule` CI jobs pass (2,080 passed, 977 skipped) |
-| flutterBench | Checkout repository field only; preserve checker commit | Immediate slug sweep | pending |
-| frappeBench | Checkout repository field only; preserve checker commit | Immediate slug sweep | pending |
-| goBench | Checkout repository field only; preserve checker commit | Immediate slug sweep | pending |
-| phpBench | Checkout repository field only; preserve checker commit | Immediate slug sweep | pending |
+| openRepoTools | New-first/legacy lane-handoff environment reads; canonical/legacy repo aliases after cutover | Consumer first, then immediate slug sweep | blocked — #341 `ee07c0e` was removed from `main` by a 2026-10-26 force-push to `33ce26d`; a 24-hour hold for the openRepoShape triad conversion was directed on 2026-10-26; no restoration, alias, or pin writes during the hold |
+| flutterBench | Checkout repository field only; preserve checker commit | Immediate slug sweep | verified — opensoft/flutterBench#8 merged as `6df93c9`; required CI and Codex review pass; checker `408aecf` unchanged |
+| frappeBench | Checkout repository field only; preserve checker commit | Immediate slug sweep | verified — opensoft/frappeBench#5 merged as `4af1cad`; required CI and clean Codex CLI review pass; checker `408aecf` unchanged |
+| goBench | Checkout repository field only; preserve checker commit | Immediate slug sweep | verified — opensoft/goBench#7 merged as `93bd923`; required CI and Codex review pass; checker `408aecf` unchanged |
+| phpBench | Checkout repository field only; preserve checker commit | Immediate slug sweep | verified — opensoft/phpBench#6 merged as `bf0d3e9`; required CI and Codex review pass; checker `408aecf` unchanged |
 | Opensoft-Tenant / AI-Credentials | Owner-led provider/path compatibility review without exposing inventories or payloads | Before fresh roots | landed — Opensoft-Tenant#240 merged as `112508f`; AI-Credentials#3 merged as `4aacee76`; 51 synthetic checks and final Codex CLI review pass at `1e87cd3`, without real credential access |
-| openWorkBenchesCli | Update current extraction-source links after cutover; do not consolidate the family | Immediate slug sweep | pending |
-| GitHub repository/settings | Controlled admin rename; description/topics/ruleset display; verify org rules and environments | Gated cutover | verified — T008 completed on 2026-10-26 for repository ID `1072217222`; canonical URL PR #232 is open; redirects, settings, releases, tags, environments, and rules are verified |
+| openWorkBenchesCli | Update current extraction-source links after cutover; do not consolidate the family | Immediate slug sweep | verified — assembly#2 merged as `d8cedec`, code#2 as `56878de`, spec#2 as `b02881c`, and ordered assembly pins#3 as `1db6ccb`; `make validate`, `make pins`, CI, and Codex reviews pass |
+| GitHub repository/settings | Controlled admin rename; description/topics/ruleset display; verify org rules and environments | Gated cutover | verified — T008 completed on 2026-10-26 for repository ID `1072217222`; canonical URL PR #232 merged as `a826ca9` with green CI and a clean Codex CLI re-review; redirects, settings, releases, tags, environments, and rules are verified |
 | Release/QA runners | Dual labels, environment aliases, config fallback; pause only at approved cutover window | Runtime compatibility | pending |
 | openWorkBenches App/Service/assembly | No implementation dependency detected; document product boundary only | Not required | not-required |
 
@@ -41,6 +41,13 @@ Status values: `pending`, `in-progress`, `ready`, `landed`, `verified`, `blocked
 - Description and topics now use `openBenches`, retaining `workbenches` as a search topic. Repository tag ruleset `25178577` is now displayed as `Immutable openBenches releases`; its tag condition and deletion/update protections are unchanged. Organization and branch rules, environment IDs and protection rules, Actions variables, and enabled/all Actions permissions match their pre-cutover state.
 - The two scheduled workflows paused for the administrative window were restored to `active` at 2026-10-26T11:07:45Z. No publication workflow was dispatched.
 - Both local clone families now use `https://github.com/opensoft/openBenches.git` as `origin`; their checkout directories and linked worktrees were not moved. Post-cutover 21 transport, 19 installer, and 7 naming-contract tests pass in `py-bench`.
+
+## T009 integration evidence and holds
+
+- opensoft/openRepoProject#41 merged as `b42355e` and opensoft/openProfiler#31 as `f4cdec2`, with required CI and clean Codex reviews. brettheap/new-workstation#64 remains open: 30 compatibility tests and seven isolated verifier scenarios pass, but the real `./scripts/verify` reports the same 22 environment failures on base and head. Real installation is not verified.
+- pyBench has no `bench-init.yml` or corresponding checkout field, so no checkout-slug PR was needed. opensoft/cloudBench#10 merged as `e0f14e0`; all five bench default branches now have exactly one canonical checkout field and the unchanged `408aecf0a09e8e89519f7df0150c1ec43cda8daa` checker.
+- openRepoKit component/spec/assembly slug-pin propagation and the openRepoTools live alias installation are paused for the same 24-hour triad-conversion hold. No Tools restore, alias update, or dependent pin write has occurred during that hold.
+- T005 and T012 remain open until the current default-branch Tools dependency is restored or superseded through the converted triad. T009 remains open for that work, ordered openRepoKit propagation, and the new-workstation source-link gate.
 
 ## Cutover evidence required
 

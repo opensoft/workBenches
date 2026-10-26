@@ -1,10 +1,17 @@
 #!/usr/bin/env bash
 # Opt-in launch synchronization; no discovery or network for unmanaged profiles.
+openbenches_sync_dir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+openbenches_sync_compat="$openbenches_sync_dir/openbenches-compat.sh"
+[[ -f "$openbenches_sync_compat" ]] || openbenches_sync_compat="$openbenches_sync_dir/lib/openbenches-compat.sh"
+[[ -f "$openbenches_sync_compat" ]] || openbenches_sync_compat=/usr/local/share/workbenches/openbenches-compat.sh
+source "$openbenches_sync_compat"
+
 wb_sync_before() {
-    local path=$1 action=$2 lease status=0
+    local path=$1 action=$2 lease status=0 config_root
     wb_sync_managed=false
-    [[ -f "${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/company-sync-enabled" ]] || return 0
-    wb_sync_helper="$(command -v workbenches-credential-sync || true)"
+    config_root="$(openbenches_config_root)"
+    [[ -f "$config_root/company-sync-enabled" ]] || return 0
+    wb_sync_helper="$(command -v workbenches-credential-sync || command -v openbenches-credential-sync || true)"
     [[ -n "$wb_sync_helper" ]] || { echo 'Company sync helper is missing; repair it from Profiles.' >&2; return 1; }
     "$wb_sync_helper" --is-managed "$path" || status=$?
     [[ "$status" != 1 ]] || return 0

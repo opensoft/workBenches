@@ -7,7 +7,12 @@ sync_lib="$sync_dir/company-profile-sync.sh"
 [[ -f "$sync_lib" ]] || sync_lib=/usr/local/share/workbenches/company-profile-sync.sh
 if [[ -f "$sync_lib" ]]; then source "$sync_lib"; else wb_sync_before() { :; }; wb_sync_after_login() { :; }; fi
 
-manifest="${CODEX_PROFILES_MANIFEST:-${CHATGPT_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/openai-profiles.json}}"
+compat_lib="$sync_dir/openbenches-compat.sh"
+[[ -f "$compat_lib" ]] || compat_lib="$sync_dir/lib/openbenches-compat.sh"
+[[ -f "$compat_lib" ]] || compat_lib=/usr/local/share/workbenches/openbenches-compat.sh
+source "$compat_lib"
+config_root="$(openbenches_config_root)"
+manifest="${CODEX_PROFILES_MANIFEST:-${CHATGPT_PROFILES_MANIFEST:-$config_root/openai-profiles.json}}"
 base="${CODEX_PROFILES_HOME:-${CHATGPT_PROFILES_HOME:-$HOME/.chatgpt-profiles}}"
 command -v jq >/dev/null 2>&1 || { echo "jq is required." >&2; exit 1; }
 

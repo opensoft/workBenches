@@ -68,8 +68,9 @@ else:
                 transcript += chunk
             plain = terminal_screen(transcript)
             ready = False; keys = b''
-            if stage == 0 and 'Navigation:' in plain and re.search(r'REQUIREMENTS · (\d+)/\1 ready', plain):
-                # Queue a bench; use only the Vault button on the main screen.
+            if (stage == 0 and 'Navigation:' in plain and re.search(r'REQUIREMENTS · (\d+)/\1 ready', plain)
+                    and not re.search(r'cloudBench · (needs check|Loading)', plain)):
+                # Requirements can settle before the focused bench is actionable.
                 ready = True; keys = b' '
             elif stage == 1 and re.search(r'Vault\s+Missing\s+\[V Install\]', plain) and 'Changes selected: 1' in plain:
                 ready = True; keys = b'V'

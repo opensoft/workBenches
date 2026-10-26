@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+compat_dir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+compat_lib="$compat_dir/openbenches-compat.sh"
+[[ -f "$compat_lib" ]] || compat_lib="$compat_dir/lib/openbenches-compat.sh"
+[[ -f "$compat_lib" ]] || compat_lib=/usr/local/share/workbenches/openbenches-compat.sh
+source "$compat_lib"
+config_root="$(openbenches_config_root)"
+
 invoked_as="$(basename "$0")"
 case "$invoked_as" in
   pgemini|gemini-profile) provider=gemini ;;
@@ -11,22 +18,22 @@ esac
 
 case "$provider" in
   gemini)
-    manifest="${GEMINI_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/gemini-profiles.json}"
+    manifest="${GEMINI_PROFILES_MANIFEST:-$config_root/gemini-profiles.json}"
     base="${GEMINI_PROFILES_HOME:-$HOME/.gemini-profiles}"
     cli="${GEMINI_BIN:-$(command -v gemini || true)}"
     label="Gemini"
     ;;
   grok)
-    manifest="${GROK_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/grok-profiles.json}"
+    manifest="${GROK_PROFILES_MANIFEST:-$config_root/grok-profiles.json}"
     base="${GROK_PROFILES_HOME:-$HOME/.grok-profiles}"
     if [[ -z "${GROK_PROFILES_HOME:-}" && -e "$base" && ! -w "$base" ]]; then
-      base="${XDG_DATA_HOME:-$HOME/.local/share}/workbenches/grok-profiles"
+      base="$(openbenches_data_root)/grok-profiles"
     fi
     cli="${GROK_BIN:-$(command -v grok || true)}"
     label="Grok"
     ;;
   glm)
-    manifest="${GLM_PROFILES_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/workbenches/glm-profiles.json}"
+    manifest="${GLM_PROFILES_MANIFEST:-$config_root/glm-profiles.json}"
     base="${GLM_PROFILES_HOME:-$HOME/.glm-profiles}"
     cli="${OPENCODE_BIN:-$(command -v opencode || true)}"
     label="Z.AI GLM"
