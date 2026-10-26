@@ -162,15 +162,21 @@ class ReleaseAutomationTests(unittest.TestCase):
                 return subprocess.CompletedProcess(argv, 0, stdout='unix:///fixture.sock\n')
             return subprocess.CompletedProcess(argv, 0)
 
+        def remote(url, **kwargs):
+            if '/opensoft/openBenches/' in url:
+                raise OSError('canonical release missing')
+            return Response()
+
         with patch.object(shared, 'fingerprint', return_value=source), \
              patch.object(shared, 'release_tag', return_value=release_tag), \
              patch.object(shared, 'inspect', side_effect=[None, row]), \
              patch.object(shared.subprocess, 'run', side_effect=command), \
-             patch.object(shared.urllib.request, 'urlopen', return_value=Response()) as network, \
+             patch.object(shared.urllib.request, 'urlopen', side_effect=remote) as network, \
              patch.dict(os.environ, {'DOCKER_HOST': 'unix:///fixture.sock', 'DOCKER_CONTEXT': ''}):
             self.assertEqual(shared.ensure('base'), 0)
-        network.assert_called_once_with(
-            f'https://github.com/opensoft/workBenches/releases/download/{release_tag}/shared-images.json', timeout=8)
+        self.assertEqual([call.args[0] for call in network.call_args_list], [
+            f'https://github.com/opensoft/openBenches/releases/download/{release_tag}/shared-images.json',
+            f'https://github.com/opensoft/workBenches/releases/download/{release_tag}/shared-images.json'])
         pulls = [(argv, kwargs) for argv, kwargs in calls if argv[:2] == ['docker', 'pull']]
         self.assertEqual(len(pulls), 1)
         self.assertEqual(pulls[0][0], ['docker', 'pull', '--platform', 'linux/amd64', image])

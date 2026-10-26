@@ -388,10 +388,10 @@ check_url_form 'ssh-dotgit'       'ssh://git@github.com/opensoft/brettheap-wip.g
 
 printf '%s\n' '--- (m) RV-W4: the onboarding clone example is runnable as printed ---'
 assert_contains "$(sed -n '1,20p' "$SCRIPT_UNDER_TEST")" \
-    'gh repo clone opensoft/workBenches && cd workBenches && ./setup.sh' \
+    'gh repo clone opensoft/openBenches && cd openBenches && ./setup.sh' \
     '(m) this script own header cd'"'"'s into the clone before ./setup.sh'
 assert_contains "$(cat "$REPO_ROOT/README.md" 2>/dev/null || true)" \
-    'gh repo clone opensoft/workBenches && cd workBenches && ./setup.sh' \
+    'gh repo clone opensoft/openBenches && cd openBenches && ./setup.sh' \
     '(m) README.md prints the same runnable clone example'
 
 # ===========================================================================
