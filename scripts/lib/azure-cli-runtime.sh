@@ -7,6 +7,7 @@ azure_cli_runtime_init() {
     local work_dir="$1" allow_login="$2" container_tools azure_runtime
     container_tools="$(openbenches_resolve_env CONTAINER_TOOLS)"
     azure_runtime="$(openbenches_resolve_env --sensitive AZURE_CLI_RUNTIME auto)" || return "$?"
+    AZURE_CLI_IMAGE="$(openbenches_resolve_env --sensitive AZURE_CLI_IMAGE mcr.microsoft.com/azure-cli:2.91.0-azurelinux3.0)" || return "$?"
     AZURE_CLI_WORK_DIR="$(realpath -- "$work_dir")"
     if [[ "$container_tools" == 1 || "$azure_runtime" == vault ]]; then
         declare -F workbenches_vault_start >/dev/null || source "$(dirname "${BASH_SOURCE[0]}")/tools-container.sh"
@@ -29,7 +30,6 @@ azure_cli_runtime_init() {
 
     if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
         AZURE_CLI_MODE=docker
-        AZURE_CLI_IMAGE="$(openbenches_resolve_env --sensitive AZURE_CLI_IMAGE mcr.microsoft.com/azure-cli:2.91.0-azurelinux3.0)" || return "$?"
         mkdir -m 0700 "$AZURE_CLI_WORK_DIR/azure-config" "$AZURE_CLI_WORK_DIR/azure-home"
         printf 'Azure CLI will run in a temporary Docker container.\n' >&2
         return 0

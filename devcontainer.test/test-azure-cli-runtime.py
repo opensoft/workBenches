@@ -167,6 +167,39 @@ os.execv(os.environ["TEST_FAKE_AZ"], [os.environ["TEST_FAKE_AZ"], *args[index + 
         self.assertFalse(any("az" in call for call in self.calls))
         self.assertFalse(any(call.get("docker", [])[:2] == ["run", "--rm"] for call in self.calls))
 
+    def test_conflicting_image_aliases_refuse_before_native_credentials(self):
+        (self.bin / "az").symlink_to(self.root / "fake-az")
+        self.env.update(OPENBENCHES_AZURE_CLI_IMAGE="mcr.microsoft.com/azure-cli:new",
+                        WORKBENCHES_AZURE_CLI_IMAGE="mcr.microsoft.com/azure-cli:old")
+        code, output = self.run_restore()
+        self.assertNotEqual(code, 0)
+        self.assertIn(b"OPENBENCHES_AZURE_CLI_IMAGE and WORKBENCHES_AZURE_CLI_IMAGE differ", output)
+        self.assertFalse(self.target.exists())
+        self.assertEqual(self.calls, [])
+
+    def test_conflicting_image_aliases_refuse_before_vault_credentials(self):
+        vault_log = self.root / "vault-calls"
+        environment = self.root / "vault-environment.sh"
+        environment.write_text('''workbenches_vault_start() {
+    printf 'vault-start\n' >> "$TEST_VAULT_LOG"
+    return 0
+}
+workbenches_runtime_docker() {
+    printf '%s\n' "$*" >> "$TEST_VAULT_LOG"
+    return 1
+}
+''')
+        self.env.update(BASH_ENV=str(environment), TEST_VAULT_LOG=str(vault_log),
+                        WORKBENCHES_AZURE_CLI_RUNTIME="vault", WORKBENCHES_VAULT_CONTAINER="fixture-vault",
+                        OPENBENCHES_AZURE_CLI_IMAGE="mcr.microsoft.com/azure-cli:new",
+                        WORKBENCHES_AZURE_CLI_IMAGE="mcr.microsoft.com/azure-cli:old")
+        code, output = self.run_restore()
+        self.assertNotEqual(code, 0)
+        self.assertIn(b"OPENBENCHES_AZURE_CLI_IMAGE and WORKBENCHES_AZURE_CLI_IMAGE differ", output)
+        self.assertFalse(self.target.exists())
+        self.assertEqual(self.calls, [])
+        self.assertFalse(vault_log.exists())
+
     def test_setup_forces_container_even_with_native_cli(self):
         (self.bin / "az").symlink_to(self.root / "fake-az")
         self.docker()

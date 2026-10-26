@@ -140,4 +140,65 @@ fi
 assert_secret_safe "$output"
 [[ ! -e "$credential_file" && ! -e "$auth_file" ]]
 
+# Canonical selection accepts only the canonical entry from a mixed manifest.
+(
+    export FAKE_AZ_MODE=ok
+    export OPENBENCHES_CREDENTIALS_HOME="$XDG_CONFIG_HOME/openbenches/credentials"
+    unset WORKBENCHES_CREDENTIALS_HOME WB_CREDENTIALS_HOME
+    mkdir -p "$XDG_CONFIG_HOME/openbenches"
+    canonical_credential_file="$OPENBENCHES_CREDENTIALS_HOME/opencode/omniroute.json"
+    jq '.entries = [.entries[0], (.entries[0] | .credentialPath = "~/.config/openbenches/credentials/opencode/omniroute.json")]' \
+        "$registry/ai/vault/azure-key-vault.json" >"$test_root/mixed-manifest.json"
+    mv "$test_root/mixed-manifest.json" "$registry/ai/vault/azure-key-vault.json"
+    rm -f -- "$credential_file" "$canonical_credential_file" "$auth_file"
+    : >"$FAKE_AZ_LOG"
+    output="$($restore_tool 2>&1)"
+    assert_secret_safe "$output"
+    jq -e '.type == "api" and .key == "fixture-omniroute-key"' "$canonical_credential_file" >/dev/null
+    jq -e '.omniroute.type == "api" and .omniroute.key == "fixture-omniroute-key"' "$auth_file" >/dev/null
+    [[ ! -e "$credential_file" ]]
+    [[ "$(grep -c 'keyvault secret show' "$FAKE_AZ_LOG")" -eq 1 ]]
+    [[ "$(grep -c 'keyvault secret download' "$FAKE_AZ_LOG")" -eq 1 ]]
+)
+
+# A legacy-only mapping is not authorized after selecting the canonical root.
+(
+    export FAKE_AZ_MODE=ok
+    export OPENBENCHES_CREDENTIALS_HOME="$XDG_CONFIG_HOME/openbenches/credentials"
+    unset WORKBENCHES_CREDENTIALS_HOME WB_CREDENTIALS_HOME
+    canonical_credential_file="$OPENBENCHES_CREDENTIALS_HOME/opencode/omniroute.json"
+    jq '.entries = [.entries[0]]' "$registry/ai/vault/azure-key-vault.json" >"$test_root/legacy-manifest.json"
+    mv "$test_root/legacy-manifest.json" "$registry/ai/vault/azure-key-vault.json"
+    rm -f -- "$credential_file" "$canonical_credential_file" "$auth_file"
+    : >"$FAKE_AZ_LOG"
+    if output="$($restore_tool 2>&1)"; then
+        echo "expected legacy mapping to be refused in canonical-root mode" >&2
+        exit 1
+    fi
+    assert_secret_safe "$output"
+    [[ ! -e "$credential_file" && ! -e "$canonical_credential_file" && ! -e "$auth_file" ]]
+    [[ ! -s "$FAKE_AZ_LOG" ]]
+)
+
+# Another path below the approved provider directory is still not the selected destination.
+(
+    export FAKE_AZ_MODE=ok
+    export OPENBENCHES_CREDENTIALS_HOME="$XDG_CONFIG_HOME/openbenches/credentials"
+    unset WORKBENCHES_CREDENTIALS_HOME WB_CREDENTIALS_HOME
+    canonical_credential_file="$OPENBENCHES_CREDENTIALS_HOME/opencode/omniroute.json"
+    unauthorized_credential_file="$OPENBENCHES_CREDENTIALS_HOME/opencode/other/omniroute.json"
+    jq '.entries[0].credentialPath = "~/.config/openbenches/credentials/opencode/other/omniroute.json"' \
+        "$registry/ai/vault/azure-key-vault.json" >"$test_root/unauthorized-manifest.json"
+    mv "$test_root/unauthorized-manifest.json" "$registry/ai/vault/azure-key-vault.json"
+    rm -f -- "$canonical_credential_file" "$auth_file"
+    : >"$FAKE_AZ_LOG"
+    if output="$($restore_tool 2>&1)"; then
+        echo "expected unauthorized mapping to be refused" >&2
+        exit 1
+    fi
+    assert_secret_safe "$output"
+    [[ ! -e "$canonical_credential_file" && ! -e "$unauthorized_credential_file" && ! -e "$auth_file" ]]
+    [[ ! -s "$FAKE_AZ_LOG" ]]
+)
+
 printf 'PASS: OpenCode OmniRoute standalone recovery contract\n'
