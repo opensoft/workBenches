@@ -144,6 +144,29 @@ os.execv(os.environ["TEST_FAKE_AZ"], [os.environ["TEST_FAKE_AZ"], *args[index + 
         self.assertTrue(self.target.exists())
         self.assertFalse(any("docker" in call for call in self.calls))
 
+    def test_conflicting_runtime_aliases_refuse_before_native_credentials(self):
+        (self.bin / "az").symlink_to(self.root / "fake-az")
+        self.docker()
+        self.env.update(OPENBENCHES_AZURE_CLI_RUNTIME="auto", WORKBENCHES_AZURE_CLI_RUNTIME="docker")
+        code, output = self.run_restore()
+        self.assertNotEqual(code, 0)
+        self.assertIn(b"OPENBENCHES_AZURE_CLI_RUNTIME and WORKBENCHES_AZURE_CLI_RUNTIME differ", output)
+        self.assertFalse(self.target.exists())
+        self.assertFalse(any("az" in call for call in self.calls))
+        self.assertFalse(any(call.get("docker", [])[:2] == ["run", "--rm"] for call in self.calls))
+
+    def test_conflicting_image_aliases_refuse_before_container_credentials(self):
+        self.docker()
+        self.env.update(WORKBENCHES_AZURE_CLI_RUNTIME="docker",
+                        OPENBENCHES_AZURE_CLI_IMAGE="mcr.microsoft.com/azure-cli:new",
+                        WORKBENCHES_AZURE_CLI_IMAGE="mcr.microsoft.com/azure-cli:old")
+        code, output = self.run_restore()
+        self.assertNotEqual(code, 0)
+        self.assertIn(b"OPENBENCHES_AZURE_CLI_IMAGE and WORKBENCHES_AZURE_CLI_IMAGE differ", output)
+        self.assertFalse(self.target.exists())
+        self.assertFalse(any("az" in call for call in self.calls))
+        self.assertFalse(any(call.get("docker", [])[:2] == ["run", "--rm"] for call in self.calls))
+
     def test_setup_forces_container_even_with_native_cli(self):
         (self.bin / "az").symlink_to(self.root / "fake-az")
         self.docker()

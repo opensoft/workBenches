@@ -182,4 +182,23 @@ fi
 assert_secret_safe "$output"
 ! grep -q 'keyvault secret show' "$FAKE_AZ_LOG"
 
+# Conflicting OmniRoute roots propagate through both functions without a target or Azure operation.
+: >"$FAKE_AZ_LOG"
+(
+    export OPENBENCHES_CREDENTIALS_HOME="$test_root/new-credentials"
+    export WORKBENCHES_CREDENTIALS_HOME="$test_root/legacy-credentials"
+    source "$repo_root/scripts/lib/openbenches-compat.sh"
+    eval "$(sed -n '/^approved_profile_root() {/,/^}/p' "$subject")"
+    eval "$(sed -n '/^validate_restore_target() {/,/^}/p' "$subject")"
+    status=0
+    output="$(approved_profile_root omniroute 2>&1)" || status=$?
+    [[ "$status" -eq 2 ]] || { echo "expected approved_profile_root conflict status 2, got $status" >&2; exit 1; }
+    grep -Fq 'OPENBENCHES_CREDENTIALS_HOME and WORKBENCHES_CREDENTIALS_HOME differ' <<<"$output"
+    status=0
+    output="$(validate_restore_target omniroute "$test_root/credentials/opencode/omniroute.json" 2>&1)" || status=$?
+    [[ "$status" -eq 2 ]] || { echo "expected validate_restore_target conflict status 2, got $status" >&2; exit 1; }
+    [[ ! -e "$test_root/credentials/opencode/omniroute.json" ]]
+)
+[[ ! -s "$FAKE_AZ_LOG" ]]
+
 printf 'PASS: AI credential Key Vault restore contract\n'

@@ -5,7 +5,7 @@ umask 077
 sync_dir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 compat_lib="$sync_dir/openbenches-compat.sh"
 [[ -f "$compat_lib" ]] || compat_lib="$sync_dir/lib/openbenches-compat.sh"
-[[ -f "$compat_lib" ]] || compat_lib=/usr/local/share/openbenches/openbenches-compat.sh
+[[ -f "$compat_lib" ]] || compat_lib=/usr/local/share/workbenches/openbenches-compat.sh
 source "$compat_lib"
 config_root="$(openbenches_config_root)"
 manifest="${PI_PROFILES_MANIFEST:-$config_root/pi-profiles.json}"

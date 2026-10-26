@@ -67,6 +67,16 @@ grep -Fq "$guard_dest" <<<"$chmod_run" || {
     exit 1
 }
 
+compat_dest="$(sed -nE 's#.*compat_lib=(/usr/local/share/[^[:space:]]+).*#\1#p' "$launcher" | head -n1)"
+[ "$compat_dest" = /usr/local/share/workbenches/openbenches-compat.sh ] || {
+    echo "FAIL: claude-profile no longer uses the durable shared compatibility helper path" >&2
+    exit 1
+}
+grep -Fq "COPY --chmod=0644 files/company-profile-sync.sh files/openbenches-compat.sh $(dirname "$compat_dest")/" "$dockerfile" || {
+    echo "FAIL: base-image/Dockerfile does not install the compatibility helper beside company-profile-sync.sh in one layer" >&2
+    exit 1
+}
+
 printf 'base-image/Dockerfile provisions claude-usage-guard.sh at the path claude-profile expects\n'
 
 # ---------------------------------------------------------------------------

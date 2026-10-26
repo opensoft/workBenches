@@ -98,7 +98,6 @@ wave_config_source="$(openbenches_config_root)"
 wave_cache_root="$(openbenches_cache_root)"
 container="py-bench"
 container_user="${USER:-$default_user}"
-wave_config_destination="/home/${container_user}/.config/$(basename "$wave_config_source")"
 workdir="/workspace"
 shell_path="zsh"
 block_title="pyBench"
@@ -237,6 +236,7 @@ done
 
 workbenches_root="${workbenches_root%/}"
 resolve_bench_defaults
+wave_config_destination="/home/${container_user}/.config/$(basename "$wave_config_source")"
 container_history_dir="/home/${container_user}/.workbenches-history"
 container_history_file="${container_history_dir}/.zsh_history"
 
@@ -955,6 +955,7 @@ ensure_user_cargo_cache() {
         "mkdir -p '/home/${container_user}/.cargo' && chown -R '${container_user}:${container_user}' '/home/${container_user}/.cargo'"
 }
 
+openbenches_compat="$workbenches_root/base-image/files/openbenches-compat.sh"
 claude_launcher="$workbenches_root/base-image/files/claude-profile"
 pclaude_launcher="$workbenches_root/base-image/files/pclaude"
 lclaude_launcher="$workbenches_root/base-image/files/lclaude"
@@ -978,6 +979,7 @@ install_ai_profile_launchers() {
     fi
 
     local launchers=(
+        "$openbenches_compat"
         "$claude_launcher"
         "$pclaude_launcher"
         "$lclaude_launcher"
@@ -1002,6 +1004,11 @@ install_ai_profile_launchers() {
     local installed_hash
     installed_hash="$(docker exec --user root "$container" sh -c "cat '$profile_launcher_marker' 2>/dev/null" || true)"
     if [[ "$installed_hash" != "$bundle_hash" ]]; then
+        if [[ -f "$openbenches_compat" ]]; then
+            docker exec --user root "$container" mkdir -p /usr/local/share/workbenches
+            docker cp "$openbenches_compat" "$container:/usr/local/share/workbenches/openbenches-compat.sh"
+            docker exec --user root "$container" chmod 0644 /usr/local/share/workbenches/openbenches-compat.sh
+        fi
         if [[ -f "$claude_npm_guard" ]]; then
             docker cp "$claude_npm_guard" "$container:/usr/local/bin/claude-npm-guard"
             docker exec --user root "$container" chmod 0755 /usr/local/bin/claude-npm-guard

@@ -9,7 +9,7 @@ if [[ -f "$sync_lib" ]]; then source "$sync_lib"; else wb_sync_before() { :; }; 
 
 compat_lib="$sync_dir/openbenches-compat.sh"
 [[ -f "$compat_lib" ]] || compat_lib="$sync_dir/lib/openbenches-compat.sh"
-[[ -f "$compat_lib" ]] || compat_lib=/usr/local/share/openbenches/openbenches-compat.sh
+[[ -f "$compat_lib" ]] || compat_lib=/usr/local/share/workbenches/openbenches-compat.sh
 source "$compat_lib"
 config_root="$(openbenches_config_root)"
 manifest="${OPENCODE_PROFILES_MANIFEST:-$config_root/opencode-profiles.json}"

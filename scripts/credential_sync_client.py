@@ -8,7 +8,14 @@ import uuid
 from company_sync import Client, SyncError, account_token, atomic, digest, lock, read_json, safe_path
 from openbenches_compat import config_root
 
-ROOT = config_root()
+
+def coordination_root():
+    profile_root = config_root()
+    legacy = profile_root.parent / 'workbenches'
+    return legacy if legacy.exists() or legacy.is_symlink() else profile_root
+
+
+ROOT = coordination_root()
 
 
 def managed_path(value):
