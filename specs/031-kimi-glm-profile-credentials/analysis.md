@@ -57,3 +57,27 @@ fields and unchecked status. Git whitespace checks passed. Astra's final
 read-only follow-up confirmed coverage and no remaining must-fix documentation
 contradictions, including independent M2 dependencies, eligible company custom
 roots and OAuth-versus-API-key migration status.
+
+2026-10-25 re-validation, after the document set grew from 14 to 16. The two
+additions are the independent review record
+[review-2026-10-24-qwen.md](review-2026-10-24-qwen.md) and its companion
+[review-2026-10-24-qwen-proposed-edits.md](review-2026-10-24-qwen-proposed-edits.md).
+The counted set is this spec directory (10 documents), the
+`openspec/changes/add-kimi-glm-profile-credentials/` change (4) and
+`docs/kimi-glm-profile-credentials.md` with `docs/release-1.7.0.md` (2). The two
+`docs/engineering-followups-1.7.*.md` backlog files are release-level and sit
+outside that set.
+
+Results: all 16 documents passed local-link, code-fence and LF checks with zero
+failures; OpenSpec strict validation passed again, reporting
+`add-kimi-glm-profile-credentials` valid; FR-001–FR-023 remain uniquely defined
+with no duplicates; and all 14 runtime task IDs remain unique and unchecked.
+`git diff --check` reports four trailing-space lines at `spec.md:3-6`; these are
+intentional Markdown hard line breaks in the header block, not defects, and MUST
+NOT be stripped. The 2026-10-24 record above is preserved unchanged because it
+accurately describes the 14-document set as it stood then.
+
+This re-validation covers documentation structure only. It does not re-open the
+independent review's findings F1–F9, which remain unaddressed, including F4 —
+T003 still lists `scripts/setup_harnesses.py` and
+`scripts/setup_harness_targets.py`, which exist only in the feature 032 worktree.
