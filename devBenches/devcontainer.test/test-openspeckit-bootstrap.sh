@@ -4198,11 +4198,11 @@ export HOME="$SHAPE_BLOCK_HOME"
 export AGENT_PROTOCOL_ROOT="$SHAPE_BLOCK_PROTOCOL_ROOT"
 
 printf '%s\n' 'Given: a home whose ~/.agents is a symlink into a dotfiles checkout, with AGENT_PROTOCOL_ROOT unset'
-# The shape of a workstation whose ~/.agents links into a new-workstation
-# checkout (opensoft/openRepoTools#186, T015 item 4; the source-read case of
-# opensoft/openBenches#148). Each run sets its environment itself and unsets
-# AGENT_PROTOCOL_ROOT, so the installer's own ~/.agents default is exercised
-# and the exported environment the later scenarios use is untouched.
+# The shape of a workstation whose ~/.agents is a symlink into a dotfiles
+# checkout (the source-read case of opensoft/openBenches#148). Each run sets
+# its environment itself and unsets AGENT_PROTOCOL_ROOT, so the installer's
+# own ~/.agents default is exercised and the exported environment the later
+# scenarios use is untouched.
 LINKED_AGENTS_HOME="$TMPDIR_ROOT/linked-agents-home"
 LINKED_AGENTS_CHECKOUT="$TMPDIR_ROOT/linked-agents-dotfiles/projects/new-workstation/home/.agents"
 LINKED_AGENTS_SPELLING="$LINKED_AGENTS_HOME/.agents"
@@ -4285,10 +4285,13 @@ assert_not_exists "$LINKED_INNER_REPO/.agents/skills/ct" 'a refused skill under 
 
 printf '%s\n' 'Given: a skill source under a symlinked ancestor, destinations a symlink would redirect, and a source that changes mid-read'
 if python3 - "$SETUP_SCRIPT" "$TMPDIR_ROOT/linked-source-safety" <<'PY'
-from contextlib import redirect_stdout
+from contextlib import contextmanager, redirect_stdout
+import errno
 import io
+import os
 from pathlib import Path
 import runpy
+import signal
 import sys
 
 namespace = runpy.run_path(sys.argv[1], run_name="setup_openspeckit_test")
@@ -4515,13 +4518,360 @@ finally:
     tool_globals["safe_source_tree_entries"] = original_entries
 check(not (fixture_root / "leaf-race-repo").exists(), "linked-source race: the skill whose file was swapped leaves no destination")
 
+# Only a symlink or a change met while reading a source is a logged skip. Every
+# other error must stop the run as it did before the skip existed. The errors
+# are injected, so the cases hold for any uid (a mode-000 file is still
+# readable by root).
+source_changed_error = tool_globals.get("SourceChangedError")
+check(
+    isinstance(source_changed_error, type) and issubclass(source_changed_error, OSError),
+    "skip-only-links: the substituted and non-regular refusals have their own OSError type",
+)
+
+real_open = os.open
+descriptor_directory = Path("/dev/fd")
+
+
+class OpenHung(Exception):
+    """Not an OSError, so the tool cannot mistake a hung open for a skip."""
+
+
+@contextmanager
+def hang_guard(seconds):
+    def on_alarm(signum, frame):
+        raise OpenHung(f"no return within {seconds} s")
+
+    previous = signal.signal(signal.SIGALRM, on_alarm)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
+
+
+def open_descriptor_count():
+    if not descriptor_directory.is_dir():
+        return None
+    return len(os.listdir(descriptor_directory))
+
+
+def expect_error(action, error_type, label, code=None):
+    """The call raises error_type (with errno code, if given) and logs no skip."""
+    global failures
+    captured = io.StringIO()
+    try:
+        with redirect_stdout(captured):
+            action()
+    except error_type as exc:
+        output = captured.getvalue()
+        check(
+            "skipped " not in output and (code is None or exc.errno == code),
+            f"{label} ({type(exc).__name__}: {exc}; log: {output.strip()!r})",
+        )
+        return exc
+    except BaseException as exc:
+        print(f"FAIL: {label}: unexpected {type(exc).__name__}: {exc}")
+        failures += 1
+    else:
+        print(f"FAIL: {label}: nothing was raised (log: {captured.getvalue().strip()!r})")
+        failures += 1
+    return None
+
+
+def failing_open(name, error, hits):
+    def fake_open(path, flags, mode=0o777, *, dir_fd=None):
+        if dir_fd is not None and path == name:
+            hits.append(path)
+            raise error
+        return real_open(path, flags, mode, dir_fd=dir_fd)
+
+    return fake_open
+
+
+def run_with_injected_open(case, name, error, label, force=False, existing=False):
+    """Make opening `name` under a directory fail with `error`, then copy a skill."""
+    checkout = make_checkout(f"{case}-checkout")
+    home = linked_home(f"{case}-home", checkout)
+    repo = fixture_root / f"{case}-repo"
+    destination = repo / ".agents" / "skills" / "ct"
+    if existing:
+        destination.mkdir(parents=True)
+        (destination / "old.txt").write_text("existing\n", encoding="utf-8")
+    state_before = tree_state(destination) if existing else None
+    hits = []
+    descriptors_before = open_descriptor_count()
+    os.open = failing_open(name, error, hits)
+    try:
+        expect_error(
+            lambda: link_or_copy_skill(home / ".agents" / "skills" / "ct", destination, False, force),
+            type(error),
+            label,
+            error.errno,
+        )
+    finally:
+        os.open = real_open
+    check(len(hits) == 1, f"{label}: the injected error was reached once")
+    check(open_descriptor_count() == descriptors_before, f"{label}: no descriptor is left open")
+    if existing:
+        check(tree_state(destination) == state_before, f"{label}: the existing destination is untouched")
+    else:
+        check(not repo.exists(), f"{label}: no destination is left")
+
+
+for code in (errno.EACCES, errno.EPERM, errno.EMFILE, errno.ENFILE, errno.EIO):
+    run_with_injected_open(
+        f"nonrace-{errno.errorcode[code].lower()}",
+        "data.txt",
+        OSError(code, os.strerror(code), "data.txt"),
+        f"skip-only-links: {errno.errorcode[code]} opening a source file is not a skip",
+    )
+
+run_with_injected_open(
+    "nonrace-directory",
+    "ct",
+    PermissionError(errno.EACCES, os.strerror(errno.EACCES), "ct"),
+    "skip-only-links: a directory on the source path that cannot be opened is not a skip",
+)
+run_with_injected_open(
+    "nonrace-force",
+    "data.txt",
+    PermissionError(errno.EACCES, os.strerror(errno.EACCES), "data.txt"),
+    "skip-only-links: a permission error under force is not a skip",
+    force=True,
+    existing=True,
+)
+
+# The listing is the first read of the source. A permission error there
+# propagates; a source that vanished is a logged skip.
+def listing_raises(error):
+    def wrapped(path):
+        raise error
+
+    return wrapped
+
+
+listing_checkout = make_checkout("listing-error-checkout")
+listing_home = linked_home("listing-error-home", listing_checkout)
+for case, error, expected in (
+    ("listing-eacces", PermissionError(errno.EACCES, os.strerror(errno.EACCES), "ct"), PermissionError),
+    ("listing-eio", OSError(errno.EIO, os.strerror(errno.EIO), "ct"), OSError),
+):
+    listing_destination = fixture_root / f"{case}-repo" / ".agents" / "skills" / "ct"
+    tool_globals["safe_source_tree_entries"] = listing_raises(error)
+    try:
+        expect_error(
+            lambda: link_or_copy_skill(listing_home / ".agents" / "skills" / "ct", listing_destination, False, False),
+            expected,
+            f"skip-only-links: {errno.errorcode[error.errno]} while listing a source propagates",
+            error.errno,
+        )
+    finally:
+        tool_globals["safe_source_tree_entries"] = original_entries
+    check(not (fixture_root / f"{case}-repo").exists(), f"skip-only-links: {errno.errorcode[error.errno]} while listing leaves no destination")
+
+vanished_destination = fixture_root / "listing-enoent-repo" / ".agents" / "skills" / "ct"
+tool_globals["safe_source_tree_entries"] = listing_raises(FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), "ct"))
+try:
+    expect_logged_skip(
+        lambda: link_or_copy_skill(listing_home / ".agents" / "skills" / "ct", vanished_destination, False, False),
+        "skip-only-links: a source that vanished while it was listed is a logged skip",
+    )
+finally:
+    tool_globals["safe_source_tree_entries"] = original_entries
+check(not (fixture_root / "listing-enoent-repo").exists(), "skip-only-links: the vanished source leaves no destination")
+
+# A symlink loop in the skills root's path is a link met while reading.
+loop_home = fixture_root / "loop-home"
+loop_home.mkdir()
+(loop_home / ".agents").symlink_to(".agents")
+loop_destination = fixture_root / "loop-repo" / ".agents" / "skills" / "ct"
+expect_logged_skip(
+    lambda: link_or_copy_skill(loop_home / ".agents" / "skills" / "ct", loop_destination, False, False),
+    "skip-only-links: a symlink loop in the skills root's path is a logged skip",
+)
+check(not (fixture_root / "loop-repo").exists(), "skip-only-links: the symlink loop leaves no destination")
+
+# More races: a file removed, and a named pipe swapped in, after the listing.
+# The pipe case must not hang: a listed regular file's open used to block until
+# a writer appeared, so the whole case runs under an alarm and a hang is a FAIL.
+gone_checkout = make_checkout("gone-race-checkout")
+gone_home = linked_home("gone-race-home", gone_checkout)
+
+
+def remove_file():
+    (gone_checkout / "skills" / "ct" / "nested" / "data.txt").unlink()
+
+
+gone_destination = fixture_root / "gone-race-repo" / ".agents" / "skills" / "ct"
+tool_globals["safe_source_tree_entries"] = listing_then(remove_file)
+try:
+    expect_logged_skip(
+        lambda: link_or_copy_skill(gone_home / ".agents" / "skills" / "ct", gone_destination, False, False),
+        "linked-source race: a skill file removed after listing is a logged skip",
+    )
+finally:
+    tool_globals["safe_source_tree_entries"] = original_entries
+check(not (fixture_root / "gone-race-repo").exists(), "linked-source race: the skill whose file was removed leaves no destination")
+
+fifo_checkout = make_checkout("fifo-race-checkout")
+fifo_home = linked_home("fifo-race-home", fifo_checkout)
+
+
+def swap_file_for_fifo():
+    data = fifo_checkout / "skills" / "ct" / "nested" / "data.txt"
+    data.unlink()
+    os.mkfifo(data)
+
+
+fifo_destination = fixture_root / "fifo-race-repo" / ".agents" / "skills" / "ct"
+fifo_descriptors_before = open_descriptor_count()
+tool_globals["safe_source_tree_entries"] = listing_then(swap_file_for_fifo)
+try:
+    with hang_guard(10):
+        fifo_output = expect_logged_skip(
+            lambda: link_or_copy_skill(fifo_home / ".agents" / "skills" / "ct", fifo_destination, False, False),
+            "linked-source race: a skill file swapped for a named pipe after listing is a logged skip",
+        )
+finally:
+    tool_globals["safe_source_tree_entries"] = original_entries
+# The pipe may take the freed inode of the file it replaced, so either refusal can name it.
+check(
+    "Refusing substituted source file" in fifo_output or "Refusing to copy non-regular source file" in fifo_output,
+    "linked-source race: the skip names the refused source file",
+)
+check(not (fixture_root / "fifo-race-repo").exists(), "linked-source race: the skill whose file became a pipe leaves no destination")
+check(open_descriptor_count() == fifo_descriptors_before, "linked-source race: the pipe case leaves no descriptor open")
+
+# A logged skip under force leaves what is already at the destination alone.
+force_checkout = make_checkout("force-skip-checkout")
+force_home = linked_home("force-skip-home", force_checkout)
+force_outside = fixture_root / "force-skip-outside.txt"
+force_outside.write_text("outside\n", encoding="utf-8")
+
+
+def swap_file_for_outside_symlink():
+    data = force_checkout / "skills" / "ct" / "nested" / "data.txt"
+    data.unlink()
+    data.symlink_to(force_outside)
+
+
+force_destination = fixture_root / "force-skip-repo" / ".agents" / "skills" / "ct"
+force_destination.mkdir(parents=True)
+(force_destination / "old.txt").write_text("existing\n", encoding="utf-8")
+force_before = tree_state(force_destination)
+tool_globals["safe_source_tree_entries"] = listing_then(swap_file_for_outside_symlink)
+try:
+    expect_logged_skip(
+        lambda: link_or_copy_skill(force_home / ".agents" / "skills" / "ct", force_destination, False, True),
+        "linked-source race: a skip under force is still a logged skip",
+    )
+finally:
+    tool_globals["safe_source_tree_entries"] = original_entries
+check(tree_state(force_destination) == force_before, "linked-source race: a skip under force leaves the existing destination intact")
+
+# The two refusals, and the non-blocking open, called directly.
+open_source_file = tool_globals["open_source_file"]
+SourceTreeEntry = tool_globals["SourceTreeEntry"]
+direct_root = fixture_root / "direct-open"
+direct_root.mkdir()
+regular_file = direct_root / "regular.bin"
+regular_file.write_bytes(bytes(range(256)) * 16)
+regular_stat = regular_file.lstat()
+regular_entry = SourceTreeEntry(
+    path=regular_file, mode=regular_stat.st_mode, device=regular_stat.st_dev, inode=regular_stat.st_ino
+)
+try:
+    regular_descriptor = open_source_file(regular_entry)
+except BaseException as exc:
+    check(False, f"skip-only-links: a listed regular file opens ({type(exc).__name__}: {exc})")
+else:
+    try:
+        check(not os.get_blocking(regular_descriptor), "skip-only-links: a source file is opened without blocking")
+        check(os.read(regular_descriptor, 1 << 20) == regular_file.read_bytes(), "skip-only-links: a regular file reads the same through the non-blocking descriptor")
+    finally:
+        os.close(regular_descriptor)
+
+substituted_entry = SourceTreeEntry(
+    path=regular_file, mode=regular_stat.st_mode, device=regular_stat.st_dev, inode=regular_stat.st_ino + 1
+)
+direct_before = open_descriptor_count()
+substituted_error = expect_error(
+    lambda: open_source_file(substituted_entry),
+    source_changed_error or (),
+    "skip-only-links: a substituted source file raises SourceChangedError",
+)
+check(substituted_error is not None and "Refusing substituted source file" in str(substituted_error), "skip-only-links: the substituted refusal keeps its message")
+
+direct_fifo = direct_root / "pipe"
+os.mkfifo(direct_fifo)
+fifo_stat = direct_fifo.lstat()
+fifo_entry = SourceTreeEntry(
+    path=direct_fifo, mode=fifo_stat.st_mode, device=fifo_stat.st_dev, inode=fifo_stat.st_ino
+)
+with hang_guard(10):
+    non_regular_error = expect_error(
+        lambda: open_source_file(fifo_entry),
+        source_changed_error or (),
+        "skip-only-links: a non-regular source file raises SourceChangedError",
+    )
+check(non_regular_error is not None and "Refusing to copy non-regular source file" in str(non_regular_error), "skip-only-links: the non-regular refusal keeps its message")
+check(open_descriptor_count() == direct_before, "skip-only-links: the two refusals close the descriptor they opened")
+
+# A source file larger than one read chunk is copied byte for byte.
+big_checkout = make_checkout("big-checkout")
+big_data = bytes(range(256)) * (3 * 4096 + 1)
+(big_checkout / "skills" / "ct" / "big.bin").write_bytes(big_data)
+big_home = linked_home("big-home", big_checkout)
+big_destination = fixture_root / "big-repo" / ".agents" / "skills" / "ct"
+try:
+    with redirect_stdout(io.StringIO()):
+        link_or_copy_skill(big_home / ".agents" / "skills" / "ct", big_destination, False, False)
+except BaseException as exc:
+    check(False, f"skip-only-links: a multi-megabyte source file is copied ({type(exc).__name__}: {exc})")
+else:
+    check((big_destination / "big.bin").read_bytes() == big_data, "skip-only-links: a multi-megabyte source file is copied byte for byte through the non-blocking descriptor")
+
 raise SystemExit(1 if failures else 0)
 PY
 then
-    pass 'a skill source under a symlinked ancestor is read, every destination and in-skill symlink check still holds, and a race is a logged skip'
+    pass 'a skill source under a symlinked ancestor is read, every destination and in-skill symlink check still holds, a race is a logged skip, and any other error stops the run'
 else
-    fail 'a skill source under a symlinked ancestor is read, every destination and in-skill symlink check still holds, and a race is a logged skip'
+    fail 'a skill source under a symlinked ancestor is read, every destination and in-skill symlink check still holds, a race is a logged skip, and any other error stops the run'
 fi
+
+printf '%s\n' 'Given: a skill with more files than the descriptor limit lets one run hold open'
+# A non-race error stops the run. Too many open files is one a test can cause
+# for any uid: the copy opens every file of a skill before it writes, so a
+# skill larger than the limit raises EMFILE. The old catch-all logged that as a
+# skip and exited 0 with the skill missing.
+OPEN_LIMIT_HOME="$TMPDIR_ROOT/open-limit-home"
+OPEN_LIMIT_REPO="$TMPDIR_ROOT/open-limit-repo"
+mkdir -p "$OPEN_LIMIT_HOME/.agents/skills/ct" "$OPEN_LIMIT_REPO"
+for open_limit_index in $(seq 1 100); do
+    printf '%s\n' "file $open_limit_index" > "$OPEN_LIMIT_HOME/.agents/skills/ct/file-$open_limit_index.txt"
+done
+git init -q "$OPEN_LIMIT_REPO"
+
+printf '%s\n' 'When: bootstrap copies it under a limit of 64 open files'
+if (
+    ulimit -n 64
+    env -u AGENT_PROTOCOL_ROOT \
+        HOME="$OPEN_LIMIT_HOME" \
+        OPSX_COMMAND_TEMPLATE_ROOT="$COMMAND_TEMPLATE_ROOT" \
+        python3 "$SETUP_SCRIPT" \
+            --repo "$OPEN_LIMIT_REPO" \
+            "${LINKED_AGENTS_FLAGS[@]}"
+) > "$TMPDIR_ROOT/open-limit.log" 2>&1; then
+    fail 'bootstrap exits non-zero when a skill cannot be opened because the descriptor limit is reached'
+else
+    pass 'bootstrap exits non-zero when a skill cannot be opened because the descriptor limit is reached'
+fi
+
+printf '%s\n' 'Then: the failure is named, is not logged as a skip, and leaves no skill behind'
+assert_contains "$TMPDIR_ROOT/open-limit.log" 'Too many open files' 'the descriptor-limit failure is reported'
+assert_not_contains "$TMPDIR_ROOT/open-limit.log" 'skipped ' 'the descriptor-limit failure is not logged as a skip'
+assert_not_exists "$OPEN_LIMIT_REPO/.agents/skills/ct" 'a skill that could not be opened leaves no destination'
 
 printf '%s\n' 'Given: overlay template trees with and without the shape compatibility marker'
 make_fake_overlay_template() {
