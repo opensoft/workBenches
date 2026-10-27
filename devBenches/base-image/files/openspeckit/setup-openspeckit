@@ -266,6 +266,21 @@ SPECIFY_INTEGRATION_TOOL_ROOTS: Final = {
     "windsurf": ".windsurf",
 }
 
+# The repository folders `ensure_skills` links or copies global skills into,
+# each from the same-named folder under the home directory.
+SKILL_HOME_DIRS: Final = (".claude", ".codex", ".agents")
+
+# Local exclude: the folders a run creates at the top of the repository are
+# kept out of `git status` through the repository's own exclude file, when they
+# are untracked and nothing ignores them yet. Folders only: root files such as
+# AGENTS.md or CLAUDE.md are tracked in many repositories. `.github` is never
+# excluded: it is a shared repository folder, and excluding it would hide the
+# workflow files someone adds there later.
+LOCAL_EXCLUDE_NEVER: Final = frozenset({".github"})
+LOCAL_EXCLUDE_COMMENT: Final = (
+    "# setup-openspeckit: local Speckit and agent folders, untracked here"
+)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -3857,9 +3872,7 @@ def ensure_skills(
     overlay_owned_destinations: set[Path],
 ) -> None:
     homes = {
-        ".claude": Path.home() / ".claude" / "skills",
-        ".codex": Path.home() / ".codex" / "skills",
-        ".agents": Path.home() / ".agents" / "skills",
+        agent_dir: Path.home() / agent_dir / "skills" for agent_dir in SKILL_HOME_DIRS
     }
     for agent_dir, source_root in homes.items():
         for skill, action in OPEN_SPEC_SKILLS.items():
@@ -4439,6 +4452,120 @@ def ensure_worktrees_ignored(repo: Path, dry_run: bool) -> None:
     )
 
 
+def local_exclude_folders() -> tuple[str, ...]:
+    """The top-level folders a run can create in the repository, `.specify` first.
+
+    Derived from the skill folders, the Spec Kit integration tool roots and the
+    first folder of every agent context file that lives in one, less
+    LOCAL_EXCLUDE_NEVER, in a stable order.
+    """
+    folders = set(SKILL_HOME_DIRS) | set(SPECIFY_INTEGRATION_TOOL_ROOTS.values())
+    for _, relative_path in SUPPORTED_AGENT_CONTEXT_FILES:
+        parts = PurePosixPath(relative_path).parts
+        if len(parts) > 1:
+            folders.add(parts[0])
+    folders -= LOCAL_EXCLUDE_NEVER | {".specify"}
+    return (".specify", *sorted(folders))
+
+
+def run_git_query(repo: Path, *arguments: str) -> subprocess.CompletedProcess[str] | None:
+    """Run a read-only git command in ``repo``; None when git cannot be started."""
+    try:
+        return subprocess.run(
+            ["git", "-C", str(repo), *arguments],
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except (OSError, ValueError):
+        return None
+
+
+def local_exclude_path(repo: Path) -> Path | None:
+    """The repository's own exclude file, or None when ``repo`` is not the top of a work tree.
+
+    git names it (`rev-parse --git-path info/exclude`): in a linked worktree it is
+    the common git directory's. A relative answer is relative to ``repo``. A
+    directory inside some other repository is never given that repository's file.
+    """
+    toplevel = run_git_query(repo, "rev-parse", "--show-toplevel")
+    if toplevel is None or toplevel.returncode != 0:
+        return None
+    try:
+        if Path(toplevel.stdout.rstrip("\n")).resolve() != repo.resolve():
+            return None
+    except (OSError, RuntimeError):
+        return None
+    answer = run_git_query(repo, "rev-parse", "--git-path", "info/exclude")
+    if answer is None or answer.returncode != 0 or not answer.stdout.rstrip("\n"):
+        return None
+    exclude_path = Path(answer.stdout.rstrip("\n"))
+    return exclude_path if exclude_path.is_absolute() else repo / exclude_path
+
+
+def missing_local_excludes(repo: Path) -> list[str]:
+    """The `/F/` lines for the candidate folders git would still show as untracked.
+
+    A folder F qualifies when it is a real directory (a symlink is never
+    followed or excluded), no file under it is tracked, and no rule ignores it.
+    """
+    lines: list[str] = []
+    for folder in local_exclude_folders():
+        mode = mode_without_following(repo / folder)
+        if mode is None or not stat.S_ISDIR(mode):
+            continue
+        tracked = run_git_query(repo, "ls-files", "-z", "--", folder)
+        if tracked is None or tracked.returncode != 0:
+            detail = tracked.stderr.strip() if tracked is not None else "git could not run"
+            raise SystemExit(f"Could not list the tracked files under {repo / folder}: {detail}")
+        if tracked.stdout:
+            continue
+        ignored = run_git_query(repo, "check-ignore", "-q", "--", f"{folder}/")
+        if ignored is None or ignored.returncode not in (0, 1):
+            detail = ignored.stderr.strip() if ignored is not None else "git could not run"
+            raise SystemExit(f"Could not check whether {repo / folder} is ignored: {detail}")
+        if ignored.returncode == 1:
+            lines.append(f"/{folder}/")
+    return lines
+
+
+def ensure_local_excludes(repo: Path, dry_run: bool) -> None:
+    """Keep the Speckit and agent folders a run leaves untracked out of `git status`.
+
+    Appends an anchored `/F/` line to the repository's own exclude file for each
+    folder `missing_local_excludes` finds, keeping the file's existing bytes and
+    never repeating a line. The file is read and written as every other
+    destination is, so a symlinked or non-regular file, or a symlinked folder on
+    its path, is refused.
+    """
+    exclude_path = local_exclude_path(repo)
+    if exclude_path is None:
+        log(f"skipped local git excludes: {repo} is not the top of a git work tree")
+        return
+    missing = missing_local_excludes(repo)
+    if not missing:
+        log(f"unchanged {exclude_path}")
+        return
+    existing_bytes = read_destination_bytes(exclude_path)
+    try:
+        existing_text = existing_bytes.decode("utf-8") if existing_bytes is not None else ""
+    except UnicodeDecodeError as exc:
+        raise SystemExit(f"Refusing to edit {exclude_path}: it is not UTF-8 text") from exc
+    present = {line.strip() for line in existing_text.splitlines()}
+    additions = [line for line in missing if line not in present]
+    if not additions:
+        log(f"unchanged {exclude_path}")
+        return
+    new_lines = additions if LOCAL_EXCLUDE_COMMENT in present else [LOCAL_EXCLUDE_COMMENT, *additions]
+    separator = "" if not existing_text or existing_text.endswith("\n") else "\n"
+    appended = "".join(f"{line}\n" for line in new_lines)
+    write_text(exclude_path, f"{existing_text}{separator}{appended}", dry_run)
+    verb = "would add" if dry_run else "added"
+    for line in additions:
+        log(f"{verb} {line} to {exclude_path}")
+
+
 def ensure_worktree_overlay(
     repo: Path,
     template_root: Path | None,
@@ -4687,6 +4814,11 @@ def main() -> int:
 
         if not args.no_global_agent_pointers:
             ensure_global_agent_pointers(agent_root, args.dry_run)
+
+        # After every write to the repository: what the run left untracked at
+        # its top goes to the repository's own exclude file (the assembly root's
+        # in a three-leg project; the legs are never touched).
+        ensure_local_excludes(repo, args.dry_run)
 
     if shape is not None and not args.dry_run:
         report_two_commit_split(repo, shape)
