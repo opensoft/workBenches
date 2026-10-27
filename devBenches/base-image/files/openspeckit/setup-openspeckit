@@ -7,6 +7,7 @@ import argparse
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, ExitStack, contextmanager
 from dataclasses import dataclass
+import errno
 import fnmatch
 import hashlib
 import json
@@ -1036,17 +1037,39 @@ def ensure_relative_directory(
                 os.fchmod(descriptor, 0o755)
 
 
+class SourceChangedError(OSError):
+    """A listed source file is no longer the regular file that was listed."""
+
+
+# The errors a symlink or a change met while reading a source gives: a path
+# component that became a file or a symlink (ENOTDIR, ELOOP), or one that went
+# away (ENOENT).
+SOURCE_LINK_OR_CHANGE_ERRNOS: Final = frozenset(
+    {errno.ENOTDIR, errno.ELOOP, errno.ENOENT}
+)
+
+
+def is_link_or_change(exc: OSError) -> bool:
+    return (
+        isinstance(exc, SourceChangedError)
+        or exc.errno in SOURCE_LINK_OR_CHANGE_ERRNOS
+    )
+
+
 def open_source_file(source: SourceTreeEntry) -> int:
     """Open a listed source file without following a symlink anywhere on its path.
 
     The walk starts at ``/`` and opens every component with O_NOFOLLOW, so a
     symlink on the path raises (NotADirectoryError, or ELOOP at the leaf). The
-    opened file must still be the regular file that was listed.
+    opened file must still be the regular file that was listed. The file is
+    opened with O_NONBLOCK, so a named pipe swapped in after the listing cannot
+    hang the open; the checks below then refuse it. A regular file is read the
+    same either way.
     """
     with directory_descriptor(source.path.parent) as source_parent_descriptor:
         source_descriptor = os.open(
             source.path.name,
-            REGULAR_FILE_OPEN_FLAGS,
+            REGULAR_FILE_OPEN_FLAGS | os.O_NONBLOCK,
             dir_fd=source_parent_descriptor,
         )
     try:
@@ -1055,9 +1078,11 @@ def open_source_file(source: SourceTreeEntry) -> int:
             source.device,
             source.inode,
         ):
-            raise OSError(f"Refusing substituted source file {source.path}")
+            raise SourceChangedError(f"Refusing substituted source file {source.path}")
         if not stat.S_ISREG(source_stat.st_mode):
-            raise OSError(f"Refusing to copy non-regular source file {source.path}")
+            raise SourceChangedError(
+                f"Refusing to copy non-regular source file {source.path}"
+            )
     except BaseException:
         os.close(source_descriptor)
         raise
@@ -1526,22 +1551,35 @@ def copy_missing_tree(src: Path, dst: Path, dry_run: bool, force: bool) -> None:
 
 
 def link_or_copy_skill(src: Path, dst: Path, dry_run: bool, force: bool) -> None:
-    # A user-global skills root is often reached through a symlink (~/.agents
-    # linked into a dotfiles checkout), and the source walk opens every path
-    # component without following one, so it failed at the link with
-    # NotADirectoryError (opensoft/openRepoTools#186, T015 item 4). The
-    # skills root ABOVE the skill directory is resolved once here; the skill
-    # directory itself and everything in it are still listed and opened
-    # without following a symlink (safe_source_tree_entries refuses one, as
-    # before). Every source file is opened before the destination is touched,
-    # and the copy reads those descriptors, so a symlink or a change met in
-    # that walk is a logged skip that writes nothing, never a crash. The
-    # destination is never resolved and its checks below are unchanged; log
-    # lines keep the spelling the caller passed.
+    # A user-global skills root is often reached through a symlink (a
+    # workstation whose ~/.agents is a symlink into a dotfiles checkout), and
+    # the source walk opens every path component without following one, so it
+    # failed at the link with NotADirectoryError (the source-read case of
+    # opensoft/openBenches#148). The skills root ABOVE the skill directory is
+    # resolved once here; the skill directory itself and everything in it are
+    # still listed and opened without following a symlink
+    # (safe_source_tree_entries refuses one, as before). Every source file is
+    # opened before the destination is touched, and the copy reads those
+    # descriptors. Only a symlink or a change met while reading the source (a
+    # SourceChangedError, ENOTDIR, ELOOP or ENOENT, or a symlink loop in the
+    # skills root's path) is a logged skip that writes nothing. Any other
+    # error, such as a permission error, too many open files or an I/O error,
+    # stops the run as it did before. The destination is never resolved and its
+    # checks below are unchanged; log lines keep the spelling the caller
+    # passed.
     try:
-        source = src.parent.resolve() / src.name
+        try:
+            source_parent = src.parent.resolve()
+        except RuntimeError as exc:
+            # Python before 3.13 reports a symlink loop as RuntimeError.
+            raise OSError(
+                errno.ELOOP, os.strerror(errno.ELOOP), str(src.parent)
+            ) from exc
+        source = source_parent / src.name
         entries = safe_source_tree_entries(source)
-    except (OSError, RuntimeError) as exc:
+    except OSError as exc:
+        if not is_link_or_change(exc):
+            raise
         log(f"skipped {src}: its source could not be read safely ({exc})")
         return
     if not source.exists():
@@ -1560,6 +1598,8 @@ def link_or_copy_skill(src: Path, dst: Path, dry_run: bool, force: bool) -> None
                 if not stat.S_ISDIR(entry.mode)
             ]
         except OSError as exc:
+            if not is_link_or_change(exc):
+                raise
             log(
                 f"skipped {src}: a symlink or a change was met while reading "
                 f"its source, so nothing was copied ({exc})"
