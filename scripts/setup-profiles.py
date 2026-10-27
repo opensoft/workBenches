@@ -231,8 +231,8 @@ def company_form(data):
     return scope
 
 def ai_accounts(scope, identity, data=None):
-    from profile_sources import menu, add_account
-    menu(scope, data, manual=lambda: add_account(scope, identity))
+    from profile_navigation import ai_menu
+    ai_menu(scope, identity, data or profiles.load(), globals())
 
 
 def ai_onboarding(data):
@@ -351,58 +351,13 @@ def scope_menu(scope, data):
                     profiles.add_identity(scope, 'Signed-in account', address); profiles.save(data)
 
 
-def manage(data):
-    if not sys.stdin.isatty() or not sys.stdout.isatty():
+
+
+def manage(data, kind=None):
+    if kind is None and (not sys.stdin.isatty() or not sys.stdout.isatty()):
         return manage_legacy(data)
-    from profile_tui import choose, clean
-    notice = ''
-    # Atomic v1->v2 migration on first interactive open; save keeps a private v1 backup.
-    profiles.save(data)
-    while True:
-        rows = []
-        for scope in profiles.scopes(data):
-            rows.append((scope['name'], ('scope', scope, None)))
-            for identity in scope['identities']:
-                rows.append(('  ' + identity['name'] + (' · Default' if identity['id'] == scope['defaultIdentityId'] else ''), ('identity', scope, identity)))
-                for connection in data['githubAccounts']:
-                    if connection['id'] in identity['githubIds']:
-                        rows.append(('    @' + connection['login'], ('github', scope, connection)))
-        rows += [('+ Add personal identity', ('personal', None, None)),
-                 ('+ Add company', ('company', None, None)), ('GitHub account library', ('library', None, None))]
-        def detail(row):
-            kind, scope, value = row
-            if kind == 'identity': return [scope['name'] + ' / ' + value['name'], value['email'], f'{len(value["githubIds"])} GitHub accounts', notice]
-            if kind == 'scope': return [scope['name'], f'{len(scope["identities"])} email identities', 'Default: ' + default_identity(scope)['email'], notice]
-            if kind == 'github': return ['@' + value['login'], value['state'], 'Connected once; reusable across profiles.', notice]
-            return ['A Add personal identity', 'C Add company', 'G Connect/link GitHub']
-        action, row = choose('PROFILES · Personal and companies', rows, lambda row: ([notice] if notice else []) + detail(row), 'A Add personal  C Add company  G GitHub accounts  L Workstation account')
-        if action == 'b': return
-        try:
-            kind, scope, value = row
-            if action == 'a' or action == 'enter' and kind == 'personal':
-                identity = identity_form(data['personal'], data); identity_menu(data['personal'], identity, data)
-            elif action == 'c' or action == 'enter' and kind == 'company':
-                scope = company_form(data); scope_menu(scope, data)
-            elif action == 'g' or action == 'enter' and kind == 'library':
-                from profile_github import GitHub, select_account
-                connection = select_account(GitHub(host), data)
-                if connection:
-                    targets = [(s['name'] + ' / ' + i['name'], (s, i)) for s in profiles.scopes(data) for i in s['identities']]
-                    choice, target = choose('LINK @' + connection['login'], targets, lambda item: ['Choose the identity that uses this account.', 'B keeps it in the library without a link.'])
-                    if choice == 'enter' and target:
-                        profiles.link_github(data, target[1], connection); profiles.save(data)
-            elif action == 'l':
-                result = subprocess.run([sys.executable, str(HERE / 'setup-workbenches-account.py')])
-                propagate_cancel(result.returncode)
-            elif action == 'enter':
-                if kind == 'scope': scope_menu(scope, data)
-                elif kind == 'identity': identity_menu(scope, value, data)
-                elif kind == 'github': github_details(value, data)
-            notice = ''
-        except ValueError as error:
-            notice = clean(str(error))[:200]
-        except (OSError, KeyError, TypeError, subprocess.TimeoutExpired):
-            notice = 'Action needs attention. Check setup and retry; existing connections are kept.'
+    from profile_navigation import manage as navigate
+    return navigate(data, globals(), kind)
 
 
 def main():
@@ -410,6 +365,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--summary', action='store_true')
     parser.add_argument('--ai-onboarding', type=Path)
+    parser.add_argument('--kind', choices=('personal', 'company', 'workstation'))
     args = parser.parse_args()
     try:
         data = profiles.load()
@@ -435,7 +391,7 @@ def main():
                 fd = os.open(args.ai_onboarding, os.O_WRONLY | os.O_TRUNC | os.O_NOFOLLOW)
                 with os.fdopen(fd, 'w') as stream: stream.write(route)
                 return 0
-            manage(profiles.load())
+            manage(profiles.load(), args.kind)
     except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as error:
         print('Profile setup needs attention: ' + str(error), file=sys.stderr)
         return 1

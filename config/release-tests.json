@@ -91,6 +91,13 @@
           ]
         },
         {
+          "id": "profile-navigation",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-profile-navigation.py"
+          ]
+        },
+        {
           "id": "docker-prerequisite",
           "argv": [
             "python3",

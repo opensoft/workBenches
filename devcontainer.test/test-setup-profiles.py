@@ -169,9 +169,9 @@ handle_input
         company = profiles.add_company(data, 'Example Company', 'me@company.org')
         profiles.save(data)
         # Dashboard -> company -> existing sync helper -> back to dashboard.
-        steps = [('PROFILES · Personal and companies', '\x1b[B\x1b[B\r'),
-            ('C Sign in', 'y'), ('Action [b]:', 'b\n'),
-            ('C Sign in', 'b'), ('PROFILES · Personal and companies', 'b')]
+        steps = [('╭─ Profile', 'j\r'), ('Company Profiles', '\r'),
+            ('Company Profile · Example Company', 'jjjjjjjjjjjj\r'), ('Action [b]:', 'b\n'),
+            ('Company Profile · Example Company', 'b'), ('Company Profiles', 'b'), ('╭─ Profile', 'b')]
         master, slave = pty.openpty()
         process = subprocess.Popen([sys.executable, str(ROOT / 'scripts/setup-profiles.py')],
             stdin=slave, stdout=slave, stderr=slave, env=env)

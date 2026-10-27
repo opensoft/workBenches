@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "kind": "openbenches-profile",
+  "profile": {
+    "type": "personal",
+    "name": "Main",
+    "email": "person@example.org",
+    "description": "My personal development profile"
+  },
+  "aiProfiles": {
+    "claude": [{"name": "personal-1", "email": "person@example.org", "aliases": []}],
+    "openai": [{"name": "personal-1", "email": "person@example.org", "aliases": []}]
+  }
+}

@@ -65,7 +65,11 @@ and imported vault-reference defaults. Alias mappings retain the canonical
 vault tag identity after a local profile name collision. Credentials are never
 part of imported metadata.
 
-Sharing-link resolution and remote editing/publishing are not implemented.
+Sharing-link resolution and editing/publishing arbitrary provider registries are
+not implemented. Feature 162 adds the hierarchical Personal/Company/Workstation
+menu and explicit portable-profile exports through a selected GitHub or Drive
+connection; ordinary HTTPS exports are local files. See
+[profile navigation](profile-navigation.md) for the contract and write limits.
 Native dialog routing has fixture coverage; attended platform dialogs and live
 vault/provider acceptance remain required. Google browser consent requires its
 administrator OAuth app; see [profile sources](cloud-profile-import.md).

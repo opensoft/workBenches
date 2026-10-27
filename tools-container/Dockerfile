@@ -2,7 +2,7 @@ FROM docker:28-cli AS docker-cli
 FROM rclone/rclone:1.75.2@sha256:2687085f718d3c628f7fdfb77c52a1d344332aed543110bb88088f2c70d43eb5 AS rclone
 
 FROM python:3.13-alpine
-RUN apk --timeout 20 add --no-cache bash ca-certificates curl git jq openssh-client ncurses-terminfo-base \
+RUN apk --timeout 20 add --no-cache bash ca-certificates coreutils curl git jq openssh-client ncurses-terminfo-base \
     && python3 --version && jq --version && git --version && curl --version
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins /usr/local/libexec/docker/cli-plugins

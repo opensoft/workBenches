@@ -336,7 +336,7 @@ esac
 
     def test_default_login_does_not_skip_interactive_ownership_pane(self):
         auth = self.directory / '.codex/auth.json'; auth.parent.mkdir(); auth.write_text('{"OPENAI_API_KEY":"fixture-key"}')
-        env = dict(os.environ, WORKBENCHES_SELECTED_PROVIDERS='openai', PATH='/usr/bin:/bin')
+        env = dict(os.environ, WORKBENCHES_SELECTED_PROVIDERS='openai', PATH=str(Path(sys.executable).parent) + os.pathsep + os.defpath)
         for key in ('WORKBENCHES_AUTH_ROUTE', 'WORKBENCHES_PROFILE_SOURCE_FLOW'): env.pop(key, None)
         master, slave = pty.openpty()
         process = subprocess.Popen(['bash', str(ROOT / 'scripts/setup-ai-profiles.sh'), '--interactive'],
@@ -371,9 +371,11 @@ m.main()
         master, slave = pty.openpty(); fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 110, 0, 0))
         process = subprocess.Popen([sys.executable, '-c', harness, '--ai-onboarding', str(output)], stdin=slave, stdout=slave, stderr=slave, env=env)
         os.close(slave); transcript = ''; stage = 0
-        steps = [('AI PROFILES · Choose ownership', b'j\r'), ('AI PROFILES · Example Company', b'j\r'),
+        steps = [('AI PROFILES · Choose ownership', b'j\r'), ('AI Profiles · Example Company', b'jjjjj\r'),
+                 ('AI PROFILES · Example Company', b'j\r'),
                  ('Local JSON manifest path:', (str(self.file) + '\n').encode()), ('REVIEW AI PROFILES', b'i'),
-                 ('Imported. Recover', b'b'), ('AI PROFILES · Choose ownership', b'jjj\r')]
+                 ('Imported. Recover', b'b'), ('AI Profiles · Example Company', b'b'),
+                 ('AI PROFILES · Choose ownership', b'jjj\r')]
         try:
             deadline = time.monotonic() + 12
             while process.poll() is None and time.monotonic() < deadline:

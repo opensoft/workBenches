@@ -322,7 +322,7 @@ def apply(scope, source, raw, revision, plans):
         except BaseException:
             for path, previous in backups.items():
                 if previous is None: path.unlink(missing_ok=True)
-                else: cloud.private_json(path, json.loads(previous))
+                else: cloud.private_bytes(path, previous)
             raise
 
 
@@ -382,14 +382,15 @@ def field(scope, label, default=''):
     return None if value.lower() == 'b' else value or default
 
 
-def add_account(scope, identity):
-    action, provider = choose('ADD AI ACCOUNT · ' + scope['name'], [(label, key) for key, label in PROVIDERS.items()],
-                             lambda _: ['Create one isolated profile in ' + scope['name'] + '.', 'Import a company file instead to add a whole account set.'])
+def add_account(scope, identity, provider=None):
+    action = 'enter'
+    if provider is None: action, provider = choose('ADD AI ACCOUNT · ' + scope['name'], [(label, key) for key, label in PROVIDERS.items()],
+                             lambda _: ['Create one isolated profile in ' + scope['name'] + '.', 'Import a profile file instead to add a whole account set.'])
     if action != 'enter': return
     email = field(scope, 'AI account login email', identity['email'])
     if email is None: return
     identities.email(email)
-    name = field(scope, 'Profile name', 'personal-1' if scope['id'] == 'personal' else 'work-' + cloud.onboarding.slugify(scope['name']))
+    name = field(scope, 'Profile name', 'personal-1' if scope['id'] == 'personal' else ('personal-' if scope['id'].startswith('personal-') else 'work-') + cloud.onboarding.slugify(scope['name']))
     if name is None: return
     document = {'version': 1, 'profiles': [{'name': name, 'email': email, 'family': scope['id']}]}
     raw = json.dumps(document).encode()

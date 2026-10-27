@@ -91,9 +91,9 @@ else:
                 ready = True; keys = b'v'
             elif stage == 6 and re.search(r'Vault\s+Up\s+\[V Connect\]', plain) and 'Changes selected: 1' in plain:
                 ready = True; keys = b'G'
-            elif stage == 7 and 'PERSONAL & COMPANY IDENTITIES' in plain and 'Personal & companies' in plain:
+            elif stage == 7 and 'Profile' in plain and all(label in plain for label in ('Personal', 'Company', 'Workstation')):
                 ready = True; keys = b'\r'
-            elif stage == 8 and 'PROFILES · Personal and companies' in plain:
+            elif stage == 8 and 'Personal Profiles' in plain:
                 ready = True; keys = b'q'
             elif stage == 9 and 'Profile action cancelled; saved profiles kept.' in plain:
                 ready = True; keys = b'G'

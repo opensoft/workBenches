@@ -15,5 +15,5 @@ OpenSpec/Speckit protocol and project bootstrap contract.
 - Preserve unrelated changes in the parent checkout and in bench submodules.
 
 <!-- SPECKIT START -->
-Active implementation plan: `specs/161-profile-source-tui/plan.md` (v1.6.2 scoped profile-source TUI, native picker and credential recovery; integrates feature 160).
+Active implementation plan: `specs/162-profile-navigation/plan.md` (v1.6.2 hierarchical profiles and reviewed metadata portability; extends features 160/161).
 <!-- SPECKIT END -->

@@ -1,4 +1,4 @@
-"""Scoped, pull-only local/cloud provider manifest imports through Tools Rclone."""
+"""Scoped local/cloud manifest imports and explicit reviewed Rclone exports."""
 import contextlib
 import fcntl
 import hashlib
@@ -44,6 +44,19 @@ def private_json(path, value):
     composer.atomic_json(path, value)
 
 
+def private_bytes(path, raw):
+    """Restore the exact previous metadata bytes after a failed transaction."""
+    if len(raw) > AGGREGATE_LIMIT: raise ValueError('Profile metadata is too large.')
+    path = safe_path(path)
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
+        temporary = Path(stream.name)
+        try:
+            stream.write(raw); stream.flush(); os.fsync(stream.fileno())
+            os.replace(temporary, path)
+        finally: temporary.unlink(missing_ok=True)
+
+
 def read_json(path, limit=LIMIT, private=False):
     path = safe_path(path)
     if private and (not path.is_file() or path.stat().st_mode & 0o077):
@@ -54,7 +67,7 @@ def read_json(path, limit=LIMIT, private=False):
 
 
 def scope_root(scope):
-    if not re.fullmatch(r'personal|company-[a-f0-9]{32}', scope['id']):
+    if not re.fullmatch(r'personal|(?:personal|company|workstation)-[a-f0-9]{32}', scope['id']):
         raise ValueError('Invalid profile scope.')
     return safe_path(identities.ROOT / 'manifest-sources' / scope['id'])
 
@@ -196,7 +209,7 @@ def rclone(scope, connection, operation, path=''):
     with locked(directory): return bounded([*argv, *args])
 
 
-def connect(scope, backend, label):
+def connect(scope, backend, label, write=False):
     if backend not in BACKENDS: raise ValueError('Unsupported cloud provider.')
     apps_file = identities.ROOT / 'cloud-profile-apps.json'
     apps = read_json(apps_file, private=True) if apps_file.exists() else {}
@@ -213,6 +226,7 @@ def connect(scope, backend, label):
     if not rpc: raise ValueError('Connect from setup in the updated Tools container so the native browser is available.')
     root = scope_root(scope); root.mkdir(parents=True, exist_ok=True, mode=0o700)
     connection = {'id': uuid.uuid4().hex, 'backend': backend, 'label': identities.text(label)}
+    if write: connection['access'] = 'write'
     destination = connection_dir(scope, connection)
     destination.mkdir(mode=0o700)
     name = 'workbenches-cloud-login-' + connection['id']
@@ -232,6 +246,7 @@ def connect(scope, backend, label):
                 '--mount', f'type=bind,src={rpc},dst={rpc}', '--env', f'WORKBENCHES_HOST_RPC={rpc}']
         if os.isatty(0) and os.isatty(1): args += ['--tty']
         args += ['--entrypoint', 'python3', image, '/opt/workbenches/rclone_login.py', str(destination), backend]
+        if write: args += ['--write']
         print('Opening a temporary browser login. Return here after approval.', flush=True)
         result = subprocess.run(args, env=clean_environment(), timeout=900)
         propagate_cancel(result.returncode)
@@ -251,13 +266,53 @@ def connect(scope, backend, label):
         if not complete: shutil.rmtree(destination, ignore_errors=True)
 
 
+def listed_file(raw, path):
+    entries = json.loads(raw)
+    if not isinstance(entries, list) or len(entries) > 2000: raise ValueError('Folder listing is too large.')
+    name = PurePosixPath(remote_path(path)).name
+    matches = [e for e in entries if isinstance(e, dict) and e.get('Path') == name]
+    if len(matches) > 1 or matches and matches[0].get('IsDir') is not False:
+        raise ValueError('The destination is ambiguous or is a folder; choose another file.')
+    return bool(matches)
+
+
+def file_contents(scope, connection, path):
+    parent = str(PurePosixPath(remote_path(path)).parent)
+    if not listed_file(rclone(scope, connection, 'list', '' if parent == '.' else parent), path): return None
+    return rclone(scope, connection, 'read', path)
+
+
+def publish(scope, connection, path, raw, baseline):
+    """Explicit create/update; existing Drive writes have a preflight, not CAS."""
+    if connection.get('access') != 'write':
+        raise ValueError('This connection is read-only. Reconnect in the browser with write permission before exporting.')
+    if len(raw) > LIMIT: raise ValueError('Export is too large.')
+    directory = connection_dir(scope, connection)
+    config = directory / 'rclone.conf'
+    if config.is_symlink() or not config.is_file() or config.stat().st_mode & 0o077:
+        raise ValueError('Cloud authorization needs reconnection.')
+    remote = 'cloud:' + remote_path(path)
+    base = ['rclone', '--config', str(config), '--log-level', 'ERROR', '--retries', '1', '--low-level-retries', '1']
+    with locked(directory):
+        parent = str(PurePosixPath(path).parent)
+        listing = bounded([*base, 'lsjson', 'cloud:' + ('' if parent == '.' else parent), '--max-depth', '1'])
+        current = bounded([*base, 'cat', remote, '--head', str(LIMIT + 1)]) if listed_file(listing, path) else None
+        if (hashlib.sha256(current).hexdigest() if current is not None else None) != baseline:
+            raise ValueError('Remote profile changed during review. Import or review it again before exporting.')
+        with tempfile.NamedTemporaryFile(dir=directory) as stream:
+            stream.write(raw); stream.flush()
+            bounded([*base, 'copyto', stream.name, remote, *(['--immutable'] if baseline is None else [])])
+        if bounded([*base, 'cat', remote, '--head', str(LIMIT + 1)]) != raw:
+            raise ValueError('Upload could not be verified. Check the remote file before retrying.')
+
+
 def selected(title, rows, details=(), actions=''):
     action, value = choose(title, rows, lambda _: list(details), actions)
     if action in ('b', ''): return None
     return (action, value)
 
 
-def browse(scope, connection):
+def browse(scope, connection, create=False):
     path = ''
     while True:
         entries = json.loads(rclone(scope, connection, 'list', path))
@@ -267,12 +322,20 @@ def browse(scope, connection):
             value = remote_path(entry['Path'])
             if '/' in value: raise ValueError('Invalid folder entry.')
             rows.append((('[Folder] ' if entry['IsDir'] else '') + value, entry))
+        if create: rows.append(('+ New profile file in this folder', '@new'))
         choice = selected(BACKENDS[connection['backend']] + ' · ' + (path or '/'), rows,
                           ['Choose a JSON profile manifest.', 'P enters a path in this drive.'], 'P Enter path')
         if choice is None: return None
         action, item = choice
         if action == 'p': return remote_path(prompt('Manifest path within this drive (Q cancels): '))
         if action != 'enter': continue
+        if item == '@new':
+            name = prompt('New profile JSON filename (B Back, Q cancels): ')
+            if name.lower() == 'b': continue
+            remote_path(name)
+            if '/' in name or not name.endswith('.json'): raise ValueError('Enter one filename ending in .json.')
+            if any(e['Path'] == name for e in entries): raise ValueError('That filename already exists; select the existing file.')
+            return remote_path('/'.join(p for p in (path, name) if p))
         if item is None:
             if not path: return None
             path = str(PurePosixPath(path).parent)

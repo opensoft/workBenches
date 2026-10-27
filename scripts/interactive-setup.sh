@@ -262,7 +262,7 @@ requirements_return_selection=0
 profiles_return_section=0
 profiles_return_selection=0
 profiles_summary='Personal identity, GitHub, and company accounts'
-profile_items=(personal_profiles workbenches_account ai_accounts)
+profile_items=(personal_profiles company_profiles workstation_profiles)
 declare -a bench_items
 declare -a ai_items
 declare -a tool_items
@@ -379,7 +379,9 @@ init_components() {
     component_description[setup_tools]=Tools
     component_description[vault]=Vault
     component_description[wsl]="WSL 2"
-    component_description[personal_profiles]='Personal & companies'
+    component_description[personal_profiles]='Personal'
+    component_description[company_profiles]='Company'
+    component_description[workstation_profiles]='Workstation'
     component_description[workbenches_account]='Workstation account'
     component_status[personal_profiles]=optional
     requirement_items=(docker setup_tools vault)
@@ -420,25 +422,30 @@ draw_requirements() {
     [[ -z "$requirements_notice" ]] || printf '\n%b%s%b\n' "$YELLOW" "${requirements_notice:0:$setup_ui_width}" "$NC"
 }
 
-# Cached profile summary only: rendering never reads files or probes accounts.
+# Rendering never reads files or probes accounts; About follows the selection.
 draw_profiles() {
-    local line item width=$((setup_ui_width - 4))
-    printf '%bPROFILES%b\n\n' "$SILVER" "$NC"
-    setup_panel_top 'PERSONAL & COMPANY IDENTITIES' 'Now or later'
+    local line item width=$((setup_ui_width - 4)) about
+    setup_panel_top 'Profile' ''
+    for item in "${!profile_items[@]}"; do
+        line="  ${component_description[${profile_items[$item]}]}"
+        [[ "$item" != "$current_selection" ]] || line="› ${component_description[${profile_items[$item]}]}"
+        line="${line:0:$width}"
+        printf '%b│%b %s%*s %b│%b\n' "$SILVER_EDGE" "$NC" "$line" "$((width - ${#line}))" '' "$SILVER_EDGE" "$NC"
+    done
+    setup_panel_bottom
+    case "${profile_items[$current_selection]}" in
+        personal_profiles) about=$'Your named personal profiles and email identities.\nEdit profile information, file location, GitHub links and AI profiles.' ;;
+        company_profiles) about=$'Your companies and work identities.\nManage company sign-in, profile files, GitHub links and AI profiles.' ;;
+        workstation_profiles) about=$'Named configurations for this local workstation.\nManage profile information, file location and workstation sign-in.\nRemote workstation access is planned for v1.8.' ;;
+    esac
+    printf '\n'; setup_panel_top 'About' ''
     while IFS= read -r line; do
         while [[ -n "$line" ]]; do
             printf '%b│%b %-*s %b│%b\n' "$SILVER_EDGE" "$NC" "$width" "${line:0:$width}" "$SILVER_EDGE" "$NC"
             line="${line:$width}"
         done
-    done <<< "$profiles_summary"
+    done <<< "$about"
     setup_panel_bottom
-    printf '\n'
-    for item in "${!profile_items[@]}"; do
-        line="${component_description[${profile_items[$item]}]}"
-        [[ "$item" != "$current_selection" ]] || line="› $line"
-        printf '  %s\n' "$line"
-    done
-    printf '\nCompany, GitHub, and AI access\nare authorized separately.\n'
     [[ -z "$requirements_notice" ]] || printf '%s\n' "${requirements_notice:0:$setup_ui_width}"
 }
 
@@ -453,9 +460,9 @@ activate_profile() {
     setup_ui_painted=false
     trap ':' INT
     case "$item" in
-        personal_profiles) python3 "$SCRIPT_DIR/setup-profiles.py" || result=$? ;;
-        workbenches_account) python3 "$SCRIPT_DIR/setup-workbenches-account.py" || result=$? ;;
-        ai_accounts) configure_selected_accounts || result=$? ;;
+        personal_profiles) python3 "$SCRIPT_DIR/setup-profiles.py" --kind personal || result=$? ;;
+        company_profiles) python3 "$SCRIPT_DIR/setup-profiles.py" --kind company || result=$? ;;
+        workstation_profiles) python3 "$SCRIPT_DIR/setup-profiles.py" --kind workstation || result=$? ;;
     esac
     trap 'echo -e "${SHOW_CURSOR}"; exit 130' INT
     case "$result" in

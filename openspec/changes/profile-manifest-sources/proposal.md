@@ -30,7 +30,8 @@ and profile-file pulls. Bounded implementation owner:
 `specs/160-rclone-manifest-import/`; its tasks.md is the sole executable checklist
 for this connector. It does not deliver all future source providers/link formats.
 
-Clarification pending: whether "update it" includes editing/publishing the remote
-manifest, in addition to re-importing source changes. Remote write permissions
-and publishing remain undesigned until answered; read/import requirements below
-are independent of that decision.
+Clarified by Brett on 2026-10-27: portable profiles may explicitly upload through
+the linked GitHub/Drive connection, with local exports for ordinary HTTPS URLs.
+The approved extension is governed by `hierarchical-profile-navigation` and
+implemented by feature 162. It does not authorize editing arbitrary tenant
+registries or grants; feature 161's source importer remains read/import-only.

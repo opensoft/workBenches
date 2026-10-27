@@ -190,16 +190,19 @@ esac
 
     def test_pty_dashboard_can_add_two_personal_and_company_identities_and_defaults(self):
         env = dict(os.environ, HOME=str(self.directory), XDG_CONFIG_HOME=str(self.directory), WORKBENCHES_HOST_RPC='')
-        steps = [('PROFILES · Personal and companies', b'a'),
+        steps = [('╭─ Profile', b'\r'), ('Personal Profiles', b'a'),
                  ('Identity name (for example Main or Consulting):', b'Main\n'), ('Email:', b'me@example.org\n'),
-                 ('Personal / Main', b'b'), ('PROFILES · Personal and companies', b'a'),
+                 ('Personal Profile · Main', b'b'), ('Personal Profiles', b'a'),
                  ('Identity name (for example Main or Consulting):', b'Consulting\n'), ('Email:', b'consult@example.org\n'),
-                 ('Personal / Consulting', b'b'), ('PROFILES · Personal and companies', b'c'),
+                 ('Personal Profile · Consulting', b'b'), ('Personal Profiles', b'b'),
+                 ('╭─ Profile', b'j\r'), ('Company Profiles', b'a'),
                  ('Company name:', b'Example Company\n'), ('Company email:', b'work@example.org\n'),
-                 ('C Sign in', b'a'), ('Identity name (for example Main or Consulting):', b'Other work\n'),
-                 ('Email:', b'other@example.org\n'), ('Example Company / Other work', b'b'),
-                 ('C Sign in', b'\x1b[B\x1b[Bd'), ('Other work · Default', b'b'),
-                 ('PROFILES · Personal and companies', b'b')]
+                 ('Company Profile · Example Company', b'jjjjjjjj\r'),
+                 ('Email Identities · Example Company', b'j\r'),
+                 ('Identity name (for example Main or Consulting):', b'Other work\n'),
+                 ('Email:', b'other@example.org\n'), ('Email Identities · Example Company', b'jd'),
+                 ('Email Identities · Example Company', b'b'), ('Company Profile · Example Company', b'b'),
+                 ('Company Profiles', b'b'), ('╭─ Profile', b'b')]
         transcript = self.drive_pty(env, steps)
         saved = profiles.load()
         self.assertEqual(len(saved['personal']['identities']), 2)
@@ -243,8 +246,11 @@ esac
     def test_pty_device_code_automatically_opens_copies_and_preserves_native_account(self):
         env, original, browser_log, clipboard = self.fake_device_flow()
         env['FAKE_AUTO_APPROVE'] = '1'
-        steps = [('PROFILES · Personal and companies', b'g'), ('GITHUB ACCOUNTS', b'n'),
-            ('LINK @example', b'\r'), ('PROFILES · Personal and companies', b'b')]
+        steps = [('╭─ Profile', b'\r'), ('Personal Profiles', b'\r'),
+            ('Personal Profile · Main', b'jjjjjjj\r'), ('GitHub Accounts · Main', b'\r'),
+            ('GITHUB ACCOUNTS', b'n'), ('Link verified GitHub account @example', b'y\n'),
+            ('GitHub Accounts · Main', b'b'), ('Personal Profile · Main', b'b'),
+            ('Personal Profiles', b'b'), ('╭─ Profile', b'b')]
         transcript = self.drive_pty(env, steps)
         saved = profiles.load()
         self.assertEqual(saved['personal']['identities'][0]['githubIds'], [101])
@@ -258,9 +264,11 @@ esac
 
     def test_pty_cancel_device_login_preserves_native_account_and_restores_menu(self):
         env, original, _, _ = self.fake_device_flow()
-        steps = [('PROFILES · Personal and companies', b'g'), ('GITHUB ACCOUNTS', b'n'),
+        steps = [('╭─ Profile', b'\r'), ('Personal Profiles', b'\r'),
+            ('Personal Profile · Main', b'jjjjjjj\r'), ('GitHub Accounts · Main', b'\r'), ('GITHUB ACCOUNTS', b'n'),
             ('Device code: ABCD-1234', b'b'), ('GITHUB ACCOUNTS', b'b'),
-            ('PROFILES · Personal and companies', b'b')]
+            ('GitHub Accounts · Main', b'b'), ('Personal Profile · Main', b'b'),
+            ('Personal Profiles', b'b'), ('╭─ Profile', b'b')]
         self.drive_pty(env, steps)
         self.assertEqual(profiles.load()['githubAccounts'], [])
         self.assertEqual(original.read_text(), 'original-active-account')

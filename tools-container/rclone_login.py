@@ -89,12 +89,12 @@ def private_command(argv, env, root):
             (root / 'browser-url').unlink(missing_ok=True)
 
 
-def configure(root, backend):
+def configure(root, backend, write=False):
     os.umask(0o077)
     options = {'config_is_local': 'true'}
-    if backend == 'drive': options['scope'] = 'drive.readonly'
+    if backend == 'drive': options['scope'] = 'drive' if write else 'drive.readonly'
     elif backend == 'onedrive':
-        options.update(access_scopes='Files.Read offline_access')
+        options.update(access_scopes='Files.ReadWrite offline_access' if write else 'Files.Read offline_access')
     else: raise ValueError('Unsupported provider.')
     app = root / 'app.json'
     if app.exists():
@@ -142,7 +142,7 @@ def main():
     server = ThreadingHTTPServer((address, PORT), Relay)
     server.daemon_threads = True
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    try: configure(root, backend)
+    try: configure(root, backend, write='--write' in sys.argv[3:])
     finally: server.shutdown(); server.server_close()
 
 

@@ -6,6 +6,7 @@ import re
 import tempfile
 import time
 import uuid
+from urllib.parse import urlsplit
 
 ROOT = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config'))) / 'workbenches'
 STORE = ROOT / 'profiles.json'
@@ -56,6 +57,11 @@ def normalize(data):
             scope['identities'] = [identity]
             scope['defaultIdentityId'] = identity['id']
         data['version'] = 2
+    if data.get('personal') and data['personal'].get('identities'):
+        personal = data['personal']
+        legacy = personal.setdefault('legacyAiIdentityId', personal['defaultIdentityId'])
+        for identity in personal['identities']:
+            identity.setdefault('aiScopeId', 'personal' if identity['id'] == legacy else 'personal-' + identity['id'].removeprefix('identity-'))
     validate(data)
     return data
 
@@ -78,7 +84,7 @@ def validate(data):
         key = scope['id']
         if not re.fullmatch(r'personal|company-[a-f0-9]{32}', key) or key in ids:
             raise ValueError('Invalid or duplicate profile identity.')
-        ids.add(key); text(scope['name'])
+        ids.add(key); text(scope['name']); validate_metadata(scope)
         identities = scope['identities']
         if not isinstance(identities, list) or not identities:
             raise ValueError('Each profile needs at least one identity.')
@@ -86,7 +92,9 @@ def validate(data):
             key = identity['id']
             if not re.fullmatch(r'identity-[a-f0-9]{32}', key) or key in identity_ids:
                 raise ValueError('Invalid or duplicate email identity.')
-            identity_ids.add(key); text(identity['name']); email(identity['email'])
+            identity_ids.add(key); text(identity['name']); email(identity['email']); validate_metadata(identity)
+            if 'aiScopeId' in identity and identity['aiScopeId'] != ('personal' if key == scope.get('legacyAiIdentityId') else 'personal-' + key.removeprefix('identity-')):
+                raise ValueError('Invalid personal AI ownership.')
             links = identity['githubIds']
             if (not isinstance(links, list) or any(type(i) is not int for i in links)
                     or len(links) != len(set(links)) or not set(links) <= account_ids
@@ -99,6 +107,29 @@ def validate(data):
         raise ValueError('Invalid personal profile identity.')
     if any(p['id'] == 'personal' for p in data['companies']):
         raise ValueError('Company identity cannot use personal storage.')
+    workstations = data.get('workstations', [])
+    if not isinstance(workstations, list):
+        raise ValueError('Invalid workstation profile list.')
+    for workstation in workstations:
+        key = workstation.get('id', '')
+        if not re.fullmatch(r'workstation-[a-f0-9]{32}', key) or key in ids:
+            raise ValueError('Invalid workstation profile identity.')
+        ids.add(key); text(workstation['name']); text(workstation['hostname']); validate_metadata(workstation)
+
+
+def validate_metadata(value):
+    for key, limit in [('description', 2000), ('profileUrl', 4096)]:
+        if value.get(key): text(value[key], limit)
+    if value.get('profileUrl', '').startswith('https://'):
+        url = urlsplit(value['profileUrl'])
+        if not url.hostname or url.username or url.password or url.query or url.fragment:
+            raise ValueError('Profile URLs must not contain credentials or query tokens.')
+    if 'location' in value:
+        source = value['location']
+        allowed = {'kind', 'path', 'githubId', 'repository', 'ref', 'connectionId'}
+        if not isinstance(source, dict) or set(source) - allowed or source.get('kind') not in ('local', 'https', 'github', 'cloud'):
+            raise ValueError('Invalid saved profile location.')
+        text(source.get('path'), 4096)
 
 
 def project_default(scope, data):
@@ -181,9 +212,25 @@ def add_company(data, name, address):
 
 def account_root(profile):
     key = profile['id']
-    if not re.fullmatch(r'personal|company-[a-f0-9]{32}', key):
+    if not re.fullmatch(r'personal|(?:personal|company|workstation)-[a-f0-9]{32}', key):
         raise ValueError('Invalid profile identity.')
     return ROOT / 'identities' / key
+
+
+def ai_scope(scope, identity=None):
+    """Keep the original personal family's homes; isolate additional identities."""
+    if scope['id'] != 'personal': return scope
+    identity = identity or next(i for i in scope['identities'] if i['id'] == scope['defaultIdentityId'])
+    return dict(scope, id=identity.get('aiScopeId', 'personal' if identity['id'] == scope.get('legacyAiIdentityId', scope['defaultIdentityId']) else 'personal-' + identity['id'].removeprefix('identity-')),
+                name=identity['name'], email=identity['email'])
+
+
+def add_workstation(data, name, hostname):
+    profile = {'id': 'workstation-' + uuid.uuid4().hex, 'name': text(name), 'hostname': text(hostname)}
+    if any(p['name'].casefold() == profile['name'].casefold() for p in data.get('workstations', [])):
+        raise ValueError('That workstation profile name already exists.')
+    data.setdefault('workstations', []).append(profile)
+    return profile
 
 
 def connected_email(root=None):

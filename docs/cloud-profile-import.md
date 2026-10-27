@@ -1,5 +1,10 @@
 # Import AI profile sources
 
+The [hierarchical Profile menu](profile-navigation.md) separates Personal,
+Company and local Workstation profiles. Personal/company editors open AI
+profiles → model maker → accounts; Import / manage sources opens this importer.
+Portable profile-information imports/exports are separate editor actions.
+
 v1.6.2 development integrates feature 160's pinned Tools Rclone connector with
 feature 161's shared personal/company source pane. No Keycloak server is required
 for imports. From Profiles, open Personal, a company or an email identity and

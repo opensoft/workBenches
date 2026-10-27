@@ -127,7 +127,7 @@ handle_input
 [[ "${{component_checked[docker]}}" != true ]] || exit 21
 [[ "${{component_checked[codex_cli]}}" == true ]] || exit 22
 CURRENT_SECTION=4; current_selection=1
-activate_profile() {{ [[ "${{profile_items[$current_selection]}}" == workbenches_account ]] || exit 23; }}
+activate_profile() {{ [[ "${{profile_items[$current_selection]}}" == company_profiles ]] || exit 23; }}
 handle_input
 [[ "${{component_checked[codex_cli]}}" == true ]] || exit 24
 '''

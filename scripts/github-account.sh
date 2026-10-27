@@ -28,15 +28,30 @@ case "$operation" in
             exit 1
         fi
         ;;
-    profile-file)
+    profile-file|profile-export-base)
         github_login=$1
         endpoint=$2
         [[ "$github_login" =~ ^[A-Za-z0-9-]{1,39}$ ]] || exit 2
         [[ "$endpoint" =~ ^repos/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/contents/ ]] || exit 2
         github_credential=$(gh auth token --hostname github.com --user "$github_login" 2>/dev/null) || exit 4
         [[ -n "$github_credential" ]] || exit 4
-        GH_TOKEN="$github_credential" gh api --hostname github.com "$endpoint" --jq \
-            'if .type == "file" and .size <= 1048576 and .encoding == "base64" then {content,encoding,sha,size} else error("Unsupported manifest file") end' 2>/dev/null
+        if github_file=$(GH_TOKEN="$github_credential" gh api --hostname github.com "$endpoint" --jq \
+            'if .type == "file" and .size <= 1048576 and .encoding == "base64" then {content,encoding,sha,size} else error("Unsupported manifest file") end' 2>&1); then
+            printf '%s' "$github_file"
+        elif [[ "$operation" == profile-export-base && "$github_file" == *'HTTP 404'* ]]; then
+            exit 44
+        else exit 1; fi
+        ;;
+    profile-put)
+        github_login=$1
+        endpoint=$2
+        payload=$3
+        [[ "$github_login" =~ ^[A-Za-z0-9-]{1,39}$ ]] || exit 2
+        [[ "$endpoint" =~ ^repos/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/contents/ && "$endpoint" != *'?'* ]] || exit 2
+        [[ -f "$payload" && ! -L "$payload" && $(wc -c < "$payload") -le 1500000 ]] || exit 2
+        github_credential=$(gh auth token --hostname github.com --user "$github_login" 2>/dev/null) || exit 4
+        [[ -n "$github_credential" ]] || exit 4
+        GH_TOKEN="$github_credential" gh api --hostname github.com --method PUT "$endpoint" --input "$payload" --jq '.commit.sha' 2>/dev/null
         ;;
     profile-revision)
         github_login=$1
