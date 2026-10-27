@@ -5314,6 +5314,330 @@ assert_contains "$LEGACY_NON_REGULAR_REPO/.specify/extensions/git/scripts/bash/g
 assert_file "$LEGACY_NON_REGULAR_MARKER_PATH/unrelated.txt" 'the coincidental directory at the marker path is left alone'
 assert_contains "$LEGACY_NON_REGULAR_MARKER_PATH/unrelated.txt" 'coincidental pre-existing content' 'its content is never touched either'
 
+# Local exclude: the folders a run creates at the top of the repository, when
+# untracked and not yet ignored, get an anchored `/F/` line in the
+# repository's own exclude file (`git rev-parse --git-path info/exclude`), so a
+# fresh clone shows them neither as untracked nor in `git status`. Folders only,
+# never `.github`, and never a root file.
+printf '%s\n' 'Given: a fresh repository, a Specify CLI that creates .specify/ and an integration folder, and the agent folders the tool creates'
+LOCAL_EXCLUDE_ROOT="$TMPDIR_ROOT/local-exclude"
+LOCAL_EXCLUDE_BIN="$LOCAL_EXCLUDE_ROOT/bin"
+LOCAL_EXCLUDE_HOME="$LOCAL_EXCLUDE_ROOT/home"
+LOCAL_EXCLUDE_PROTOCOL_ROOT="$LOCAL_EXCLUDE_ROOT/protocol"
+LOCAL_EXCLUDE_EMPTY_TEMPLATE="$LOCAL_EXCLUDE_ROOT/empty-git-template"
+LOCAL_EXCLUDE_FOLDERS=(.specify .agents .augment .claude .codex .cursor .gemini .junie .kilocode .roo .trae .vibe .windsurf)
+mkdir -p "$LOCAL_EXCLUDE_BIN" "$LOCAL_EXCLUDE_HOME" "$LOCAL_EXCLUDE_PROTOCOL_ROOT" "$LOCAL_EXCLUDE_EMPTY_TEMPLATE"
+cat > "$LOCAL_EXCLUDE_BIN/specify" <<'EOF'
+#!/usr/bin/env bash
+mkdir -p .specify/templates .gemini/commands
+printf '%s\n' '{"integration":"gemini"}' > .specify/init-options.json
+printf '%s\n' '{"integration":"gemini"}' > .specify/integration.json
+printf '%s\n' '# Spec template' > .specify/templates/spec-template.md
+printf '%s\n' '# Specify command' > .gemini/commands/speckit.specify.toml
+EOF
+chmod 0755 "$LOCAL_EXCLUDE_BIN/specify"
+
+run_local_exclude_bootstrap() {
+    local repo="$1"
+    local log_file="$2"
+    shift 2
+    HOME="$LOCAL_EXCLUDE_HOME" \
+        AGENT_PROTOCOL_ROOT="$LOCAL_EXCLUDE_PROTOCOL_ROOT" \
+        OPSX_COMMAND_TEMPLATE_ROOT="$COMMAND_TEMPLATE_ROOT" \
+        PATH="$LOCAL_EXCLUDE_BIN:/usr/bin:/bin" \
+        python3 "$SETUP_SCRIPT" \
+        --repo "$repo" \
+        --integration gemini \
+        --no-speckit-registration \
+        --no-worktrees \
+        --no-skill-shape-blocks \
+        --no-skill-routing-blocks \
+        --no-global-agent-pointers \
+        "$@" > "$log_file" 2>&1
+}
+
+make_local_exclude_repo() {
+    local repo="$1"
+    shift
+    git init -q -b main "$@" "$repo"
+    printf '%s\n' 'local exclude fixture' > "$repo/README.md"
+    git_fixture -C "$repo" add README.md
+    git_fixture -C "$repo" commit -q -m 'initial local exclude fixture'
+}
+
+local_exclude_ignore_exit() {
+    local repo="$1"
+    local path_name="$2"
+    local result=0
+    git -C "$repo" check-ignore -q -- "$path_name" || result=$?
+    printf '%s\n' "$result"
+}
+
+local_exclude_line_count() {
+    local exclude_file="$1"
+    local line="$2"
+    if [[ -f "$exclude_file" ]]; then
+        grep -Fxc -- "$line" "$exclude_file" || true
+    else
+        printf '%s\n' 0
+    fi
+}
+
+LOCAL_EXCLUDE_REPO="$LOCAL_EXCLUDE_ROOT/fresh-repo"
+LOCAL_EXCLUDE_FILE="$LOCAL_EXCLUDE_REPO/.git/info/exclude"
+make_local_exclude_repo "$LOCAL_EXCLUDE_REPO"
+cp "$LOCAL_EXCLUDE_FILE" "$LOCAL_EXCLUDE_ROOT/fresh-exclude.before"
+git -C "$LOCAL_EXCLUDE_REPO" ls-files > "$LOCAL_EXCLUDE_ROOT/fresh-ls-files.before"
+
+printf '%s\n' 'When: bootstrap initializes the fresh repository'
+if run_local_exclude_bootstrap "$LOCAL_EXCLUDE_REPO" "$LOCAL_EXCLUDE_ROOT/fresh.log"; then
+    pass 'local exclude: the fresh bootstrap succeeds'
+else
+    fail 'local exclude: the fresh bootstrap succeeds'
+    cat "$LOCAL_EXCLUDE_ROOT/fresh.log"
+fi
+
+printf '%s\n' 'Then: .specify/ and every agent folder the run created are ignored through the exclude file, each line once'
+git -C "$LOCAL_EXCLUDE_REPO" status --porcelain > "$LOCAL_EXCLUDE_ROOT/fresh-status.after"
+for folder in "${LOCAL_EXCLUDE_FOLDERS[@]}"; do
+    assert_regular_directory "$LOCAL_EXCLUDE_REPO/$folder" "local exclude: the run created $folder/"
+    assert_equal "$(local_exclude_ignore_exit "$LOCAL_EXCLUDE_REPO" "$folder/")" 0 "local exclude: git check-ignore passes for $folder/"
+    assert_equal "$(local_exclude_line_count "$LOCAL_EXCLUDE_FILE" "/$folder/")" 1 "local exclude: the exclude file carries /$folder/ once"
+    assert_not_contains "$LOCAL_EXCLUDE_ROOT/fresh-status.after" "$folder/" "local exclude: git status does not list $folder/"
+    assert_contains "$LOCAL_EXCLUDE_ROOT/fresh.log" "added /$folder/ to $LOCAL_EXCLUDE_FILE" "local exclude: the log names /$folder/ and the file it went to"
+done
+assert_equal "$(local_exclude_line_count "$LOCAL_EXCLUDE_FILE" '/.kiro/')" 0 'local exclude: a candidate folder the run did not create gets no line'
+assert_equal "$(git -C "$LOCAL_EXCLUDE_REPO" ls-files -- .specify)" '' 'local exclude: no file under .specify/ is tracked'
+assert_equal "$(git -C "$LOCAL_EXCLUDE_REPO" ls-files)" "$(cat "$LOCAL_EXCLUDE_ROOT/fresh-ls-files.before")" 'local exclude: git ls-files is unchanged'
+if head -c "$(stat -c '%s' "$LOCAL_EXCLUDE_ROOT/fresh-exclude.before")" "$LOCAL_EXCLUDE_FILE" | cmp -s - "$LOCAL_EXCLUDE_ROOT/fresh-exclude.before"; then
+    pass 'local exclude: the exclude file keeps its existing bytes first'
+else
+    fail 'local exclude: the exclude file keeps its existing bytes first'
+fi
+
+printf '%s\n' 'Then: .github/ and the root context files are never excluded'
+assert_regular_directory "$LOCAL_EXCLUDE_REPO/.github" 'local exclude: the run created an untracked .github/'
+assert_not_contains "$LOCAL_EXCLUDE_FILE" '.github' 'local exclude: an untracked .github/ gets no exclude line'
+assert_equal "$(local_exclude_ignore_exit "$LOCAL_EXCLUDE_REPO" .github/)" 1 'local exclude: .github/ stays visible to git'
+assert_contains "$LOCAL_EXCLUDE_ROOT/fresh-status.after" '?? .github/' 'local exclude: git status still lists the untracked .github/'
+for root_file in AGENTS.md CLAUDE.md GEMINI.md; do
+    assert_not_contains "$LOCAL_EXCLUDE_FILE" "$root_file" "local exclude: the root file $root_file gets no exclude line"
+    assert_contains "$LOCAL_EXCLUDE_ROOT/fresh-status.after" "?? $root_file" "local exclude: git status still lists $root_file"
+done
+
+printf '%s\n' 'When: bootstrap runs again over the same repository'
+cp "$LOCAL_EXCLUDE_FILE" "$LOCAL_EXCLUDE_ROOT/fresh-exclude.first"
+if run_local_exclude_bootstrap "$LOCAL_EXCLUDE_REPO" "$LOCAL_EXCLUDE_ROOT/fresh-second.log"; then
+    pass 'local exclude: the second bootstrap succeeds'
+else
+    fail 'local exclude: the second bootstrap succeeds'
+    cat "$LOCAL_EXCLUDE_ROOT/fresh-second.log"
+fi
+
+printf '%s\n' 'Then: no exclude line is repeated and the log says the file is unchanged'
+if cmp -s "$LOCAL_EXCLUDE_ROOT/fresh-exclude.first" "$LOCAL_EXCLUDE_FILE"; then
+    pass 'local exclude: a second run leaves the exclude file byte-for-byte unchanged'
+else
+    fail 'local exclude: a second run changes the exclude file'
+fi
+assert_contains "$LOCAL_EXCLUDE_ROOT/fresh-second.log" "unchanged $LOCAL_EXCLUDE_FILE" 'local exclude: the second run logs the exclude file as unchanged'
+assert_not_contains "$LOCAL_EXCLUDE_ROOT/fresh-second.log" 'added /' 'local exclude: the second run adds no line'
+for folder in "${LOCAL_EXCLUDE_FOLDERS[@]}"; do
+    assert_equal "$(local_exclude_line_count "$LOCAL_EXCLUDE_FILE" "/$folder/")" 1 "local exclude: after a second run /$folder/ is still there once"
+done
+assert_equal "$(grep -c '^# setup-openspeckit' "$LOCAL_EXCLUDE_FILE" || true)" 1 'local exclude: the comment line is written once'
+
+printf '%s\n' 'Given: a repository whose tracked .gitignore already ignores .claude/'
+LOCAL_EXCLUDE_GITIGNORE_REPO="$LOCAL_EXCLUDE_ROOT/gitignore-repo"
+make_local_exclude_repo "$LOCAL_EXCLUDE_GITIGNORE_REPO"
+printf '%s\n' '/.claude/' > "$LOCAL_EXCLUDE_GITIGNORE_REPO/.gitignore"
+git_fixture -C "$LOCAL_EXCLUDE_GITIGNORE_REPO" add .gitignore
+git_fixture -C "$LOCAL_EXCLUDE_GITIGNORE_REPO" commit -q -m 'ignore .claude'
+
+printf '%s\n' 'When: bootstrap runs there'
+if run_local_exclude_bootstrap "$LOCAL_EXCLUDE_GITIGNORE_REPO" "$LOCAL_EXCLUDE_ROOT/gitignore.log"; then
+    pass 'local exclude: the bootstrap with a tracked .gitignore succeeds'
+else
+    fail 'local exclude: the bootstrap with a tracked .gitignore succeeds'
+    cat "$LOCAL_EXCLUDE_ROOT/gitignore.log"
+fi
+
+printf '%s\n' 'Then: the folder already ignored gets no exclude line, and the others do'
+LOCAL_EXCLUDE_GITIGNORE_FILE="$LOCAL_EXCLUDE_GITIGNORE_REPO/.git/info/exclude"
+assert_equal "$(local_exclude_line_count "$LOCAL_EXCLUDE_GITIGNORE_FILE" '/.claude/')" 0 'local exclude: a folder the .gitignore ignores gets no exclude line'
+assert_equal "$(local_exclude_ignore_exit "$LOCAL_EXCLUDE_GITIGNORE_REPO" .claude/)" 0 'local exclude: .claude/ stays ignored through the .gitignore'
+assert_equal "$(local_exclude_line_count "$LOCAL_EXCLUDE_GITIGNORE_FILE" '/.specify/')" 1 'local exclude: .specify/ is still excluded beside a .gitignore'
+
+printf '%s\n' 'Given: a repository that tracks .claude/settings.json and .github/workflows/ci.yml, with .kiro a symlink'
+LOCAL_EXCLUDE_TRACKED_REPO="$LOCAL_EXCLUDE_ROOT/tracked-repo"
+make_local_exclude_repo "$LOCAL_EXCLUDE_TRACKED_REPO"
+mkdir -p "$LOCAL_EXCLUDE_TRACKED_REPO/.claude" "$LOCAL_EXCLUDE_TRACKED_REPO/.github/workflows" "$LOCAL_EXCLUDE_ROOT/kiro-target"
+printf '%s\n' '{}' > "$LOCAL_EXCLUDE_TRACKED_REPO/.claude/settings.json"
+printf '%s\n' 'name: ci' > "$LOCAL_EXCLUDE_TRACKED_REPO/.github/workflows/ci.yml"
+git_fixture -C "$LOCAL_EXCLUDE_TRACKED_REPO" add .claude/settings.json .github/workflows/ci.yml
+git_fixture -C "$LOCAL_EXCLUDE_TRACKED_REPO" commit -q -m 'track agent settings and a workflow'
+ln -s "$LOCAL_EXCLUDE_ROOT/kiro-target" "$LOCAL_EXCLUDE_TRACKED_REPO/.kiro"
+
+printf '%s\n' 'When: bootstrap runs there'
+if run_local_exclude_bootstrap "$LOCAL_EXCLUDE_TRACKED_REPO" "$LOCAL_EXCLUDE_ROOT/tracked.log"; then
+    pass 'local exclude: the bootstrap with tracked agent files succeeds'
+else
+    fail 'local exclude: the bootstrap with tracked agent files succeeds'
+    cat "$LOCAL_EXCLUDE_ROOT/tracked.log"
+fi
+
+printf '%s\n' 'Then: a folder with a tracked file, .github/ and a symlinked folder get no exclude line'
+LOCAL_EXCLUDE_TRACKED_FILE="$LOCAL_EXCLUDE_TRACKED_REPO/.git/info/exclude"
+assert_equal "$(local_exclude_line_count "$LOCAL_EXCLUDE_TRACKED_FILE" '/.claude/')" 0 'local exclude: a folder with a tracked file gets no exclude line'
+assert_equal "$(local_exclude_ignore_exit "$LOCAL_EXCLUDE_TRACKED_REPO" .claude/)" 1 'local exclude: a folder with a tracked file stays visible to git'
+assert_not_contains "$LOCAL_EXCLUDE_TRACKED_FILE" '.github' 'local exclude: a tracked .github/ gets no exclude line'
+assert_equal "$(local_exclude_line_count "$LOCAL_EXCLUDE_TRACKED_FILE" '/.kiro/')" 0 'local exclude: a symlinked folder gets no exclude line'
+assert_equal "$(git -C "$LOCAL_EXCLUDE_TRACKED_REPO" ls-files -- .claude .github)" "$(printf '%s\n' .claude/settings.json .github/workflows/ci.yml)" 'local exclude: the tracked agent files stay tracked'
+assert_equal "$(local_exclude_line_count "$LOCAL_EXCLUDE_TRACKED_FILE" '/.specify/')" 1 'local exclude: .specify/ is excluded beside tracked agent files'
+assert_equal "$(local_exclude_line_count "$LOCAL_EXCLUDE_TRACKED_FILE" '/.codex/')" 1 'local exclude: a wholly untracked agent folder is excluded beside tracked ones'
+
+printf '%s\n' 'Given: repositories with untracked .specify/ and .claude/, one with the stock exclude file and one with no info/ directory'
+LOCAL_EXCLUDE_DRY_REPO="$LOCAL_EXCLUDE_ROOT/dry-repo"
+LOCAL_EXCLUDE_DRY_FILE="$LOCAL_EXCLUDE_DRY_REPO/.git/info/exclude"
+LOCAL_EXCLUDE_BARE_INFO_REPO="$LOCAL_EXCLUDE_ROOT/no-info-repo"
+LOCAL_EXCLUDE_BARE_INFO_FILE="$LOCAL_EXCLUDE_BARE_INFO_REPO/.git/info/exclude"
+make_local_exclude_repo "$LOCAL_EXCLUDE_DRY_REPO"
+make_local_exclude_repo "$LOCAL_EXCLUDE_BARE_INFO_REPO" --template="$LOCAL_EXCLUDE_EMPTY_TEMPLATE"
+for dry_repo in "$LOCAL_EXCLUDE_DRY_REPO" "$LOCAL_EXCLUDE_BARE_INFO_REPO"; do
+    seed_speckit_state "$dry_repo"
+    mkdir -p "$dry_repo/.claude/notes"
+    printf '%s\n' 'untracked note' > "$dry_repo/.claude/notes/note.md"
+done
+cp "$LOCAL_EXCLUDE_DRY_FILE" "$LOCAL_EXCLUDE_ROOT/dry-exclude.before"
+
+printf '%s\n' 'When: bootstrap runs with --dry-run in both'
+if run_local_exclude_bootstrap "$LOCAL_EXCLUDE_DRY_REPO" "$LOCAL_EXCLUDE_ROOT/dry.log" --dry-run \
+    && run_local_exclude_bootstrap "$LOCAL_EXCLUDE_BARE_INFO_REPO" "$LOCAL_EXCLUDE_ROOT/dry-no-info.log" --dry-run; then
+    pass 'local exclude: both dry runs succeed'
+else
+    fail 'local exclude: both dry runs succeed'
+    cat "$LOCAL_EXCLUDE_ROOT/dry.log" "$LOCAL_EXCLUDE_ROOT/dry-no-info.log"
+fi
+
+printf '%s\n' 'Then: the exclude file is byte-identical or still absent, and the log says what would be added'
+if cmp -s "$LOCAL_EXCLUDE_ROOT/dry-exclude.before" "$LOCAL_EXCLUDE_DRY_FILE"; then
+    pass 'local exclude: --dry-run leaves the exclude file byte-identical'
+else
+    fail 'local exclude: --dry-run changes the exclude file'
+fi
+assert_not_exists "$LOCAL_EXCLUDE_BARE_INFO_FILE" 'local exclude: --dry-run leaves an absent exclude file absent'
+assert_not_exists "$LOCAL_EXCLUDE_BARE_INFO_REPO/.git/info" 'local exclude: --dry-run creates no info/ directory'
+assert_contains "$LOCAL_EXCLUDE_ROOT/dry.log" "would add /.specify/ to $LOCAL_EXCLUDE_DRY_FILE" 'local exclude: --dry-run logs the .specify/ line it would add'
+assert_contains "$LOCAL_EXCLUDE_ROOT/dry.log" "would add /.claude/ to $LOCAL_EXCLUDE_DRY_FILE" 'local exclude: --dry-run logs the agent folder line it would add'
+assert_contains "$LOCAL_EXCLUDE_ROOT/dry-no-info.log" "would add /.specify/ to $LOCAL_EXCLUDE_BARE_INFO_FILE" 'local exclude: --dry-run logs the line it would add to an absent exclude file'
+assert_equal "$(local_exclude_ignore_exit "$LOCAL_EXCLUDE_DRY_REPO" .specify/)" 1 'local exclude: after --dry-run .specify/ is still not ignored'
+
+printf '%s\n' 'When: bootstrap runs for real where info/ is missing'
+if run_local_exclude_bootstrap "$LOCAL_EXCLUDE_BARE_INFO_REPO" "$LOCAL_EXCLUDE_ROOT/no-info.log"; then
+    pass 'local exclude: the bootstrap without info/ succeeds'
+else
+    fail 'local exclude: the bootstrap without info/ succeeds'
+    cat "$LOCAL_EXCLUDE_ROOT/no-info.log"
+fi
+
+printf '%s\n' 'Then: info/exclude is created with the lines'
+assert_regular_directory "$LOCAL_EXCLUDE_BARE_INFO_REPO/.git/info" 'local exclude: the run creates the missing info/ directory'
+assert_equal "$(local_exclude_line_count "$LOCAL_EXCLUDE_BARE_INFO_FILE" '/.specify/')" 1 'local exclude: the created exclude file carries /.specify/ once'
+assert_equal "$(local_exclude_ignore_exit "$LOCAL_EXCLUDE_BARE_INFO_REPO" .specify/)" 0 'local exclude: .specify/ is ignored once info/exclude is created'
+
+printf '%s\n' 'Given: a linked worktree of a repository'
+LOCAL_EXCLUDE_MAIN_REPO="$LOCAL_EXCLUDE_ROOT/worktree-main"
+LOCAL_EXCLUDE_LINKED_REPO="$LOCAL_EXCLUDE_ROOT/worktree-linked"
+make_local_exclude_repo "$LOCAL_EXCLUDE_MAIN_REPO"
+git -C "$LOCAL_EXCLUDE_MAIN_REPO" worktree add -q --detach "$LOCAL_EXCLUDE_LINKED_REPO"
+
+printf '%s\n' 'When: bootstrap runs with the linked worktree as --repo'
+if run_local_exclude_bootstrap "$LOCAL_EXCLUDE_LINKED_REPO" "$LOCAL_EXCLUDE_ROOT/linked.log"; then
+    pass 'local exclude: the bootstrap in a linked worktree succeeds'
+else
+    fail 'local exclude: the bootstrap in a linked worktree succeeds'
+    cat "$LOCAL_EXCLUDE_ROOT/linked.log"
+fi
+
+printf '%s\n' 'Then: the common git directory exclude file gets the lines, and the worktree sees them'
+if [[ -f "$LOCAL_EXCLUDE_LINKED_REPO/.git" ]]; then
+    pass 'local exclude: the linked worktree has a .git file, not a directory'
+else
+    fail 'local exclude: the linked worktree has a .git file, not a directory'
+fi
+assert_equal "$(local_exclude_line_count "$LOCAL_EXCLUDE_MAIN_REPO/.git/info/exclude" '/.specify/')" 1 'local exclude: the common directory exclude file carries /.specify/ once'
+assert_equal "$(local_exclude_ignore_exit "$LOCAL_EXCLUDE_LINKED_REPO" .specify/)" 0 'local exclude: git check-ignore passes for .specify/ in the linked worktree'
+assert_contains "$LOCAL_EXCLUDE_ROOT/linked.log" "added /.specify/ to $LOCAL_EXCLUDE_MAIN_REPO/.git/info/exclude" 'local exclude: the log names the common directory exclude file'
+
+printf '%s\n' 'Given: repositories whose info/exclude, or whose info/ directory, is a symlink to a target outside'
+LOCAL_EXCLUDE_OUTSIDE="$LOCAL_EXCLUDE_ROOT/outside"
+LOCAL_EXCLUDE_LEAF_REPO="$LOCAL_EXCLUDE_ROOT/symlinked-exclude-repo"
+LOCAL_EXCLUDE_PARENT_REPO="$LOCAL_EXCLUDE_ROOT/symlinked-info-repo"
+mkdir -p "$LOCAL_EXCLUDE_OUTSIDE/info-dir"
+printf '%s\n' '# outside exclude file' > "$LOCAL_EXCLUDE_OUTSIDE/exclude"
+printf '%s\n' '# outside info exclude file' > "$LOCAL_EXCLUDE_OUTSIDE/info-dir/exclude"
+cp "$LOCAL_EXCLUDE_OUTSIDE/exclude" "$LOCAL_EXCLUDE_ROOT/outside-exclude.before"
+cp "$LOCAL_EXCLUDE_OUTSIDE/info-dir/exclude" "$LOCAL_EXCLUDE_ROOT/outside-info-exclude.before"
+make_local_exclude_repo "$LOCAL_EXCLUDE_LEAF_REPO" --template="$LOCAL_EXCLUDE_EMPTY_TEMPLATE"
+mkdir "$LOCAL_EXCLUDE_LEAF_REPO/.git/info"
+ln -s "$LOCAL_EXCLUDE_OUTSIDE/exclude" "$LOCAL_EXCLUDE_LEAF_REPO/.git/info/exclude"
+make_local_exclude_repo "$LOCAL_EXCLUDE_PARENT_REPO" --template="$LOCAL_EXCLUDE_EMPTY_TEMPLATE"
+ln -s "$LOCAL_EXCLUDE_OUTSIDE/info-dir" "$LOCAL_EXCLUDE_PARENT_REPO/.git/info"
+
+printf '%s\n' 'When: bootstrap runs in each'
+if run_local_exclude_bootstrap "$LOCAL_EXCLUDE_LEAF_REPO" "$LOCAL_EXCLUDE_ROOT/symlinked-exclude.log"; then
+    fail 'local exclude: a symlinked exclude file is refused'
+else
+    pass 'local exclude: a symlinked exclude file is refused'
+fi
+if run_local_exclude_bootstrap "$LOCAL_EXCLUDE_PARENT_REPO" "$LOCAL_EXCLUDE_ROOT/symlinked-info.log"; then
+    fail 'local exclude: a symlinked info/ directory is refused'
+else
+    pass 'local exclude: a symlinked info/ directory is refused'
+fi
+
+printf '%s\n' 'Then: the refusals name the unsafe path and the outside targets are unchanged'
+assert_contains "$LOCAL_EXCLUDE_ROOT/symlinked-exclude.log" "Refusing unsafe destination path $LOCAL_EXCLUDE_LEAF_REPO/.git/info/exclude: symlink leaf" 'local exclude: the symlinked exclude file refusal names the leaf'
+assert_contains "$LOCAL_EXCLUDE_ROOT/symlinked-info.log" "Refusing unsafe destination path $LOCAL_EXCLUDE_PARENT_REPO/.git/info/exclude: symlink parent at $LOCAL_EXCLUDE_PARENT_REPO/.git/info" 'local exclude: the symlinked info/ refusal names the parent'
+if cmp -s "$LOCAL_EXCLUDE_ROOT/outside-exclude.before" "$LOCAL_EXCLUDE_OUTSIDE/exclude"; then
+    pass 'local exclude: the outside exclude file behind a symlinked leaf is unchanged'
+else
+    fail 'local exclude: the outside exclude file behind a symlinked leaf changed'
+fi
+if cmp -s "$LOCAL_EXCLUDE_ROOT/outside-info-exclude.before" "$LOCAL_EXCLUDE_OUTSIDE/info-dir/exclude"; then
+    pass 'local exclude: the outside exclude file behind a symlinked info/ is unchanged'
+else
+    fail 'local exclude: the outside exclude file behind a symlinked info/ changed'
+fi
+assert_equal "$(ls -A "$LOCAL_EXCLUDE_OUTSIDE/info-dir")" 'exclude' 'local exclude: nothing new is written in the outside info/ target'
+
+printf '%s\n' 'Given: a three-leg root with its spec and code legs'
+LOCAL_EXCLUDE_THREE_LEG_ROOT="$LOCAL_EXCLUDE_ROOT/three-leg-root"
+make_three_leg_root "$LOCAL_EXCLUDE_THREE_LEG_ROOT"
+
+printf '%s\n' 'When: bootstrap runs against the three-leg root'
+if run_local_exclude_bootstrap "$LOCAL_EXCLUDE_THREE_LEG_ROOT" "$LOCAL_EXCLUDE_ROOT/three-leg.log" --skip-init --no-skill-links; then
+    pass 'local exclude: the three-leg bootstrap succeeds'
+else
+    fail 'local exclude: the three-leg bootstrap succeeds'
+    cat "$LOCAL_EXCLUDE_ROOT/three-leg.log"
+fi
+
+printf '%s\n' 'Then: the lines go to the root exclude file, never to a leg'
+assert_equal "$(local_exclude_line_count "$LOCAL_EXCLUDE_THREE_LEG_ROOT/.git/info/exclude" '/.specify/')" 1 'local exclude: the three-leg root exclude file carries /.specify/ once'
+assert_equal "$(local_exclude_ignore_exit "$LOCAL_EXCLUDE_THREE_LEG_ROOT" .specify/)" 0 'local exclude: .specify/ is ignored in the three-leg root'
+for leg in spec code; do
+    leg_exclude="$(git -C "$LOCAL_EXCLUDE_THREE_LEG_ROOT/$leg" rev-parse --git-path info/exclude)"
+    if [[ "$leg_exclude" != /* ]]; then
+        leg_exclude="$LOCAL_EXCLUDE_THREE_LEG_ROOT/$leg/$leg_exclude"
+    fi
+    if [[ ! -e "$leg_exclude" ]] || ! grep -Eq '^(# setup-openspeckit|/\.)' "$leg_exclude"; then
+        pass "local exclude: the $leg leg exclude file gets no line"
+    else
+        fail "local exclude: the $leg leg exclude file gets no line: $leg_exclude"
+    fi
+done
+
 export HOME="$FIXTURE_HOME"
 export SPECKIT_WORKTREE_TEMPLATE_ROOT="$WORKTREE_TEMPLATE_ROOT"
 export OPSX_COMMAND_TEMPLATE_ROOT="$COMMAND_TEMPLATE_ROOT"
