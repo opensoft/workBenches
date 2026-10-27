@@ -1021,56 +1021,86 @@ def ensure_relative_directory(
                 os.fchmod(descriptor, 0o755)
 
 
-def copy_regular_file_at(
-    source: SourceTreeEntry,
-    parent_descriptor: int,
-    name: str,
-    destination_mode: int | None = None,
-) -> None:
+def open_source_file(source: SourceTreeEntry) -> int:
+    """Open a listed source file without following a symlink anywhere on its path.
+
+    The walk starts at ``/`` and opens every component with O_NOFOLLOW, so a
+    symlink on the path raises (NotADirectoryError, or ELOOP at the leaf). The
+    opened file must still be the regular file that was listed.
+    """
     with directory_descriptor(source.path.parent) as source_parent_descriptor:
         source_descriptor = os.open(
             source.path.name,
             REGULAR_FILE_OPEN_FLAGS,
             dir_fd=source_parent_descriptor,
         )
-        with managed_descriptor(source_descriptor):
-            source_stat = os.fstat(source_descriptor)
-            if (source_stat.st_dev, source_stat.st_ino) != (
-                source.device,
-                source.inode,
-            ):
-                raise OSError(f"Refusing substituted source file {source.path}")
-            source_mode = source_stat.st_mode
-            if not stat.S_ISREG(source_mode):
-                raise OSError(f"Refusing to copy non-regular source file {source.path}")
-            temporary_name, destination_descriptor = temporary_regular_file(
-                parent_descriptor,
-                name,
+    try:
+        source_stat = os.fstat(source_descriptor)
+        if (source_stat.st_dev, source_stat.st_ino) != (
+            source.device,
+            source.inode,
+        ):
+            raise OSError(f"Refusing substituted source file {source.path}")
+        if not stat.S_ISREG(source_stat.st_mode):
+            raise OSError(f"Refusing to copy non-regular source file {source.path}")
+    except BaseException:
+        os.close(source_descriptor)
+        raise
+    return source_descriptor
+
+
+def copy_open_source_file_at(
+    source: SourceTreeEntry,
+    source_descriptor: int,
+    parent_descriptor: int,
+    name: str,
+    destination_mode: int | None = None,
+) -> None:
+    source_mode = os.fstat(source_descriptor).st_mode
+    temporary_name, destination_descriptor = temporary_regular_file(
+        parent_descriptor,
+        name,
+    )
+    try:
+        with managed_descriptor(destination_descriptor):
+            while True:
+                chunk = os.read(source_descriptor, 1024 * 1024)
+                if not chunk:
+                    break
+                write_all(destination_descriptor, chunk)
+            os.fchmod(
+                destination_descriptor,
+                destination_mode
+                if destination_mode is not None
+                else normalized_regular_file_mode(source.path, source_mode),
             )
-            try:
-                with managed_descriptor(destination_descriptor):
-                    while True:
-                        chunk = os.read(source_descriptor, 1024 * 1024)
-                        if not chunk:
-                            break
-                        write_all(destination_descriptor, chunk)
-                    os.fchmod(
-                        destination_descriptor,
-                        destination_mode
-                        if destination_mode is not None
-                        else normalized_regular_file_mode(source.path, source_mode),
-                    )
-                os.replace(
-                    temporary_name,
-                    name,
-                    src_dir_fd=parent_descriptor,
-                    dst_dir_fd=parent_descriptor,
-                )
-            finally:
-                try:
-                    os.unlink(temporary_name, dir_fd=parent_descriptor)
-                except FileNotFoundError:
-                    pass
+        os.replace(
+            temporary_name,
+            name,
+            src_dir_fd=parent_descriptor,
+            dst_dir_fd=parent_descriptor,
+        )
+    finally:
+        try:
+            os.unlink(temporary_name, dir_fd=parent_descriptor)
+        except FileNotFoundError:
+            pass
+
+
+def copy_regular_file_at(
+    source: SourceTreeEntry,
+    parent_descriptor: int,
+    name: str,
+    destination_mode: int | None = None,
+) -> None:
+    with managed_descriptor(open_source_file(source)) as source_descriptor:
+        copy_open_source_file_at(
+            source,
+            source_descriptor,
+            parent_descriptor,
+            name,
+            destination_mode,
+        )
 
 
 def copy_tree_contents_with_descriptors(
@@ -1481,9 +1511,57 @@ def copy_missing_tree(src: Path, dst: Path, dry_run: bool, force: bool) -> None:
 
 
 def link_or_copy_skill(src: Path, dst: Path, dry_run: bool, force: bool) -> None:
-    entries = safe_source_tree_entries(src)
-    if not src.exists():
+    # A user-global skills root is often reached through a symlink (~/.agents
+    # linked into a dotfiles checkout), and the source walk opens every path
+    # component without following one, so it failed at the link with
+    # NotADirectoryError (opensoft/openRepoTools#186, T015 item 4). The
+    # skills root ABOVE the skill directory is resolved once here; the skill
+    # directory itself and everything in it are still listed and opened
+    # without following a symlink (safe_source_tree_entries refuses one, as
+    # before). Every source file is opened before the destination is touched,
+    # and the copy reads those descriptors, so a symlink or a change met in
+    # that walk is a logged skip that writes nothing, never a crash. The
+    # destination is never resolved and its checks below are unchanged; log
+    # lines keep the spelling the caller passed.
+    try:
+        source = src.parent.resolve() / src.name
+        entries = safe_source_tree_entries(source)
+    except (OSError, RuntimeError) as exc:
+        log(f"skipped {src}: its source could not be read safely ({exc})")
         return
+    if not source.exists():
+        return
+    with ExitStack() as source_descriptors:
+        try:
+            source_descriptors.enter_context(directory_descriptor(source))
+            opened_sources = [
+                (
+                    entry,
+                    source_descriptors.enter_context(
+                        managed_descriptor(open_source_file(entry))
+                    ),
+                )
+                for entry in entries
+                if not stat.S_ISDIR(entry.mode)
+            ]
+        except OSError as exc:
+            log(
+                f"skipped {src}: a symlink or a change was met while reading "
+                f"its source, so nothing was copied ({exc})"
+            )
+            return
+        copy_opened_skill(src, source, dst, entries, opened_sources, dry_run, force)
+
+
+def copy_opened_skill(
+    src: Path,
+    source: Path,
+    dst: Path,
+    entries: list[SourceTreeEntry],
+    opened_sources: list[tuple[SourceTreeEntry, int]],
+    dry_run: bool,
+    force: bool,
+) -> None:
     if dry_run:
         ensure_safe_destination_parent(dst, set())
         destination_mode = mode_without_following(dst)
@@ -1514,23 +1592,26 @@ def link_or_copy_skill(src: Path, dst: Path, dry_run: bool, force: bool) -> None
         )
         with managed_descriptor(root_descriptor):
             os.fchmod(root_descriptor, 0o755)
-            for source in (
+            for entry in (
                 entry for entry in entries if stat.S_ISDIR(entry.mode)
             ):
                 ensure_relative_directory(
                     root_descriptor,
-                    source.path.relative_to(src).parts,
+                    entry.path.relative_to(source).parts,
                     False,
                 )
-            for source in (
-                entry for entry in entries if not stat.S_ISDIR(entry.mode)
-            ):
-                relative_parts = source.path.relative_to(src).parts
+            for entry, source_descriptor in opened_sources:
+                relative_parts = entry.path.relative_to(source).parts
                 with relative_directory_descriptor(
                     root_descriptor,
                     relative_parts[:-1],
                 ) as parent_descriptor:
-                    copy_regular_file_at(source, parent_descriptor, relative_parts[-1])
+                    copy_open_source_file_at(
+                        entry,
+                        source_descriptor,
+                        parent_descriptor,
+                        relative_parts[-1],
+                    )
             if dst.name == "speckit-clarify":
                 skill_mode = mode_at(root_descriptor, "SKILL.md")
                 if skill_mode is not None and stat.S_ISREG(skill_mode):
