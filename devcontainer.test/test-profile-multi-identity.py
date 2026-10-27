@@ -198,7 +198,7 @@ esac
                  ('Company name:', b'Example Company\n'), ('Company email:', b'work@example.org\n'),
                  ('C Sign in', b'a'), ('Identity name (for example Main or Consulting):', b'Other work\n'),
                  ('Email:', b'other@example.org\n'), ('Example Company / Other work', b'b'),
-                 ('C Sign in', b'\x1b[Bd'), ('Other work · Default', b'b'),
+                 ('C Sign in', b'\x1b[B\x1b[Bd'), ('Other work · Default', b'b'),
                  ('PROFILES · Personal and companies', b'b')]
         transcript = self.drive_pty(env, steps)
         saved = profiles.load()

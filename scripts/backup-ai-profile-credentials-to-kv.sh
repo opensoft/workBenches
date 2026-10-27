@@ -88,6 +88,7 @@ validate_manifest() {
         and (.credentialPath | type == "string" and length > 0)
         and (.secretName | type == "string" and length > 0)
         and (.enabled | type == "boolean")
+        and ((has("vaultProfile") | not) or (.vaultProfile | type == "string" and test("^[a-z0-9][a-z0-9-]*$")))
       )
     ' "$MANIFEST" >/dev/null || die "manifest schema is invalid"
     jq -e '
@@ -157,11 +158,13 @@ validate_entry_metadata() {
     local profile="$2"
     local path="$3"
     local secret_name="$4"
+    local vault_profile="${5:-$profile}"
 
     [[ "$provider" =~ ^[a-z0-9-]+$ ]] || return 1
     [[ "$profile" =~ ^[a-z0-9-]+$ ]] || return 1
     [[ "$secret_name" =~ ^[a-zA-Z0-9-]{1,127}$ ]] || return 1
-    [[ "$secret_name" == "ai-credential-$provider-$profile" ]] || return 1
+    [[ "$vault_profile" =~ ^[a-z0-9][a-z0-9-]*$ ]] || return 1
+    [[ "$secret_name" == "ai-credential-$provider-$vault_profile" ]] || return 1
     [[ "$path" == /* ]] || return 1
 }
 
@@ -449,10 +452,11 @@ restore_entry() {
     local profile="$5"
     local target="$6"
     local secret_name="$7"
+    local vault_profile="${8:-$profile}"
     local metadata secret_id content_type tag_company tag_provider tag_profile tag_manager
     local download target_dir target_tmp restored_at
 
-    validate_entry_metadata "$provider" "$profile" "$target" "$secret_name" ||
+    validate_entry_metadata "$provider" "$profile" "$target" "$secret_name" "$vault_profile" ||
         { printf 'FAIL  %-8s %-16s invalid manifest entry\n' "$provider" "$profile" >&2; return 1; }
     validate_restore_target "$provider" "$target" ||
         { printf 'FAIL  %-8s %-16s unsafe credential target\n' "$provider" "$profile" >&2; return 1; }
@@ -483,7 +487,7 @@ restore_entry() {
         { printf 'FAIL  %-8s %-16s Azure returned an unexpected secret version URI\n' "$provider" "$profile" >&2; return 1; }
     [[ "$content_type" == "application/json; credential-format=$provider" ]] ||
         { printf 'FAIL  %-8s %-16s secret content type does not match provider\n' "$provider" "$profile" >&2; return 1; }
-    [[ "$tag_company" == "$company" && "$tag_provider" == "$provider" && "$tag_profile" == "$profile" && "$tag_manager" == "workBenches" ]] ||
+    [[ "$tag_company" == "$company" && "$tag_provider" == "$provider" && "$tag_profile" == "$vault_profile" && "$tag_manager" == "workBenches" ]] ||
         { printf 'FAIL  %-8s %-16s secret tags do not match manifest entry\n' "$provider" "$profile" >&2; return 1; }
 
     download="$TEMP_DIR/${provider}-${profile}.restore"
@@ -593,13 +597,17 @@ selected=0
 passed=0
 preserved=0
 failed=0
-while IFS=$'\t' read -r provider profile credential_path secret_name; do
+while IFS=$'\t' read -r provider profile credential_path secret_name vault_profile; do
     [[ -z "$PROVIDER_FILTER" || "$provider" == "$PROVIDER_FILTER" ]] || continue
     [[ -z "$PROFILE_FILTER" || "$profile" == "$PROFILE_FILTER" ]] || continue
     selected=$((selected + 1))
 
+    if [[ "$ACTION" != restore && "$vault_profile" != "$profile" ]]; then
+        printf 'FAIL  %-8s %-16s renamed source profiles support restore only\n' "$provider" "$profile" >&2
+        failed=$((failed + 1)); continue
+    fi
     source="$(expand_home "$credential_path" || true)"
-    if [[ -z "$source" ]] || ! validate_entry_metadata "$provider" "$profile" "$source" "$secret_name"; then
+    if [[ -z "$source" ]] || ! validate_entry_metadata "$provider" "$profile" "$source" "$secret_name" "$vault_profile"; then
         printf 'FAIL  %-8s %-16s invalid manifest entry\n' "$provider" "$profile" >&2
         failed=$((failed + 1))
         continue
@@ -631,7 +639,7 @@ while IFS=$'\t' read -r provider profile credential_path secret_name; do
             ;;
         restore)
             restore_status=0
-            restore_entry "$subscription_id" "$vault_name" "$company" "$provider" "$profile" "$source" "$secret_name" || restore_status=$?
+            restore_entry "$subscription_id" "$vault_name" "$company" "$provider" "$profile" "$source" "$secret_name" "$vault_profile" || restore_status=$?
             case "$restore_status" in
                 0) passed=$((passed + 1)) ;;
                 2) preserved=$((preserved + 1)) ;;
@@ -643,7 +651,7 @@ done < <(
     jq -r '
       .entries[]
       | select(.enabled == true)
-      | [.provider, .profile, .credentialPath, .secretName]
+      | [.provider, .profile, .credentialPath, .secretName, (.vaultProfile // .profile)]
       | @tsv
     ' "$MANIFEST"
 )

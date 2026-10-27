@@ -2,6 +2,7 @@
 # Private noninteractive native-host callbacks. Invoked only by tools-command.sh.
 set -uo pipefail
 session=$1
+native_profile_file="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/native-profile-file.sh"
 export PATH="$WORKBENCHES_NATIVE_PATH"
 umask 077
 cleanup() { rm -f "$session/alive"; [[ -z "${command_pid:-}" ]] || kill "$command_pid" 2>/dev/null || true; }
@@ -26,6 +27,7 @@ resolve_path() {
 dispatch() {
     local action=$1; shift
     case "$action" in
+        @profile-file) bash "$native_profile_file" "$@" ;;
         @which) PATH="$WORKBENCHES_NATIVE_PATH" command -v "$1" ;;
         @resolve) resolve_path "$1" ;;
         @read) cat -- "$1" ;;

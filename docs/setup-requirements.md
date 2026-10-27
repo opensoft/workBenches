@@ -30,7 +30,7 @@ Required:
 - Docker installed, with an accessible daemon using Linux containers.
 - On Windows, setup running inside a WSL 2 Linux distribution.
 - A healthy **Tools** container, started automatically after Docker is available.
-  Python 3, jq, Git, and curl run there; setup does not install them on the host.
+  Python 3, jq, Git, curl and Rclone run there; setup does not install them on the host.
   The host needs Bash and its normal OS utilities in addition to Docker.
 
 On native Windows (for example Git Bash), setup offers WSL/Ubuntu installation

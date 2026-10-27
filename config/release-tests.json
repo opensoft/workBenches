@@ -77,6 +77,20 @@
           ]
         },
         {
+          "id": "cloud-profiles",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-cloud-profiles.py"
+          ]
+        },
+        {
+          "id": "profile-sources",
+          "argv": [
+            "python3",
+            "devcontainer.test/test-profile-sources.py"
+          ]
+        },
+        {
           "id": "docker-prerequisite",
           "argv": [
             "python3",

@@ -16,19 +16,39 @@ deployment/provider QA pending. See the
 [synchronization guide](company-credential-sync.md) and
 [specification](../specs/027-company-credential-sync/spec.md).
 
-## Manifest-source scope decision (2026-10-25)
+## Import or add AI profiles (v1.6.2 development)
 
-For v1.6.2, "workstation" means this local computer. Personal and company scopes
-are to retain their manifest source (local/hosted file or GitHub repository) and
-an explicitly linked browser-authenticated connection for later access/refresh.
-Local JSON imports use filesystem access; private remote files/repositories use
-the provider's browser authorization. OneDrive/Google Drive need file connectors;
-company Keycloak sign-in alone does not grant those providers' permissions.
-These expanded source/refresh requirements are planned, not delivered by the
-current wizard. See the [proposal](../openspec/changes/profile-manifest-sources/proposal.md)
-for implemented foundations, missing integration and pending remote-write scope.
-Peer-workstation communication through a workBenches service is targeted for
-v1.8. Imported manifest metadata and provider credentials remain separate.
+Open Personal or a company, then **AI profiles** (also **F**). The same pane is
+available inside an email identity. Adding a company records your company email;
+AI account emails come from the imported file or **Add one AI account manually**.
+An existing standard Claude/Codex login no longer skips this choice during
+interactive AI account setup. Choose **Continue setup** to keep using it.
+
+Use **Choose local file** for a native desktop picker, **Enter local path** for
+manual/headless use, **Enter HTTPS file URL** for a direct public JSON file, or
+**GitHub repository** with a selected verified connection. Google Drive/OneDrive
+use browser sign-in and connected-drive browsing through Tools Rclone. Their
+sharing URLs are not automatically resolved; the pane explains the supported
+route. Company Keycloak sign-in is not required for local files and does not
+authorize GitHub, cloud files or Key Vault.
+
+The review pane shows provider/profile counts, names/emails and local collision
+names. Enter toggles profiles or a whole provider; **I Import selected** applies
+only reviewed metadata and configures launchers. Active accounts are selected
+initially, planned accounts require selection, and disabled/retired accounts are
+excluded. Imports add profiles; deselecting does not remove existing accounts.
+**Refresh** uses the remembered source and its original connection. Cancellation,
+failed reads or a review/apply race keep the previous configuration.
+
+**Recover Claude/Codex credentials** selects only this personal/company scope.
+Mappings live alongside its saved sources; Azure device-code login retrieves
+approved secrets. Imported Azure references supply editable vault/secret defaults.
+Existing credentials remain private and are preserved. Credentials being present
+is not a provider sign-in test; launch the selected profile to verify access.
+
+See the [source import guide](cloud-profile-import.md) for file formats,
+platform routing, cloud app prerequisites and qualification limits. Peer service
+integration remains targeted for v1.8; remote publishing is not implemented.
 
 ## Profiles manager
 

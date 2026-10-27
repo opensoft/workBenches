@@ -8,7 +8,7 @@ root="${WORKBENCHES_TOOLS_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 source "$root/scripts/lib/tools-container.sh"
 tool="${0##*/}"
 if [[ "$tool" == tools-command.sh ]]; then tool=$1; shift; fi
-case "$tool" in python3|jq|git|curl) ;; *) echo 'Unsupported setup tool.' >&2; exit 2 ;; esac
+case "$tool" in python3|jq|git|curl|rclone) ;; *) echo 'Unsupported setup tool.' >&2; exit 2 ;; esac
 [[ "$(workbenches_tools_state)" == up ]] || workbenches_tools_start || exit "$?"
 session_root="${XDG_CACHE_HOME:-$HOME/.cache}/workbenches/tools/sessions"
 umask 077

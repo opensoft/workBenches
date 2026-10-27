@@ -43,23 +43,32 @@ def run(argv, *, capture_output=False, text=False, timeout=30, env=None, input=N
         (directory / 'ready').touch()
         deadline = time.monotonic() + timeout + 5
         positions = {'stdout': 0, 'stderr': 0}
-        while not (directory / 'exit').exists():
-            if time.monotonic() > deadline or not (root / 'alive').is_file():
-                (directory / 'cancel').touch()
-                for _ in range(100):
-                    if (directory / 'exit').exists() or not (root / 'alive').is_file():
-                        break
-                    time.sleep(0.025)
-                raise subprocess.TimeoutExpired(arguments, timeout)
-            if not capture_output:
-                for name, stream in (('stdout', sys.stdout), ('stderr', sys.stderr)):
-                    source = directory / name
-                    if source.exists():
-                        with source.open('rb') as output:
-                            output.seek(positions[name]); data = output.read()
-                        positions[name] += len(data)
-                        stream.buffer.write(data); stream.flush()
-            time.sleep(0.025)
+        try:
+            while not (directory / 'exit').exists():
+                if time.monotonic() > deadline or not (root / 'alive').is_file():
+                    (directory / 'cancel').touch()
+                    for _ in range(100):
+                        if (directory / 'exit').exists() or not (root / 'alive').is_file():
+                            break
+                        time.sleep(0.025)
+                    raise subprocess.TimeoutExpired(arguments, timeout)
+                if not capture_output:
+                    for name, stream in (('stdout', sys.stdout), ('stderr', sys.stderr)):
+                        source = directory / name
+                        if source.exists():
+                            with source.open('rb') as output:
+                                output.seek(positions[name]); data = output.read()
+                            positions[name] += len(data)
+                            stream.buffer.write(data); stream.flush()
+                time.sleep(0.025)
+        except BaseException:
+            # Cancellation must reach a native dialog/command before its private
+            # request directory is removed by TemporaryDirectory.
+            (directory / 'cancel').touch()
+            for _ in range(100):
+                if (directory / 'exit').exists() or not (root / 'alive').is_file(): break
+                time.sleep(.025)
+            raise
         code = int((directory / 'exit').read_text())
         outputs = []
         for name, stream in (('stdout', sys.stdout), ('stderr', sys.stderr)):

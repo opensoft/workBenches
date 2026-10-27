@@ -96,14 +96,23 @@ def guided_recovery(service, manifest, advanced_auth=False):
         print("No missing configured credentials. Configure a profile first, or use native provider sign-in.")
         return 0
     if service == "azure":
+        references = profile_credentials.references(rows)
+        vaults = {value[0] for value in references.values()}
+        default_vault = next(iter(vaults)) if len(vaults) == 1 else ""
         print("Azure mappings must match the workBenches ownership tags on existing secrets.")
         mapping = {"schemaVersion": 1, "tenantId": prompt("Azure tenant ID: "),
-                   "subscriptionId": prompt("Azure subscription ID: "), "vaultName": prompt("Key Vault name: "),
+                   "subscriptionId": prompt("Azure subscription ID: "), "vaultName": prompt("Key Vault name" + (f" [{default_vault}]" if default_vault else "") + ": ") or default_vault,
                    "company": prompt("Company tag on the stored credentials: "), "entries": []}
         for entry in rows:
-            name = prompt(f"Secret name for {entry['provider']}/{entry['profile']} (S to skip): ")
+            reference = references.get((entry["provider"], entry["profile"]))
+            default = reference[1] if reference and reference[0] == mapping["vaultName"] else ""
+            name = prompt(f"Secret name for {entry['provider']}/{entry['profile']}" + (f" [{default}]" if default else "") + " (S to skip): ") or default
             if name and name.lower() != "s":
-                mapping["entries"].append(dict(entry, secretName=name))
+                row = dict(entry, secretName=name)
+                prefix = 'ai-credential-' + entry['provider'] + '-'
+                if name.startswith(prefix) and name[len(prefix):] != entry['profile']:
+                    row['vaultProfile'] = name[len(prefix):]
+                mapping["entries"].append(row)
         if not mapping["entries"]:
             return 0
         write_private(manifest, mapping)
@@ -166,6 +175,11 @@ def main():
         print("Reusing existing credentials; no missing selected credentials to recover.")
         return 0
     config = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "workbenches"
+    scope = os.environ.get("WORKBENCHES_CREDENTIAL_SCOPE")
+    if scope:
+        if not re.fullmatch(r"personal|company-[a-f0-9]{32}", scope):
+            raise ValueError("Invalid credential recovery scope")
+        config = config / "manifest-sources" / scope
     manifests = {service: Path(os.environ.get("AI_CREDENTIAL_KV_MANIFEST", config / filename)) if service == "azure" else config / filename
                  for service, _, filename in SERVICES}
     guided_services = set()

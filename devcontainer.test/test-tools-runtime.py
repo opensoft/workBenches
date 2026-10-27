@@ -117,6 +117,40 @@ else:
     print('PASS: main-screen Vault V Install → Connect → Ctrl+C → sign in → sign out; Profiles open/cancel/back; queued bench preserved')
 
 
+def check_cloud_callback(image):
+    """Real Docker loopback publication and Tools relay; no provider or tokens."""
+    name = 'workbenches-cloud-callback-' + uuid.uuid4().hex[:12]
+    script = '''import http.server, socket, threading
+from rclone_login import Relay
+class Fixture(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *_): pass
+    def do_GET(self):
+        self.send_response(200); self.end_headers(); self.wfile.write(self.path.encode())
+local = http.server.ThreadingHTTPServer(('127.0.0.1', 53682), Fixture)
+threading.Thread(target=local.serve_forever, daemon=True).start()
+http.server.ThreadingHTTPServer((socket.gethostbyname(socket.gethostname()), 53682), Relay).serve_forever()
+'''
+    try:
+        run(['docker', 'run', '-d', '--rm', '--name', name, '--user', f'{os.getuid()}:{os.getgid()}', '--read-only', '--cap-drop', 'ALL',
+             '--publish', '127.0.0.1::53682', '--entrypoint', 'python3', image, '-c', script])
+        info = json.loads(run(['docker', 'inspect', name]))[0]
+        binding = info['NetworkSettings']['Ports']['53682/tcp'][0]
+        assert binding['HostIp'] == '127.0.0.1'
+        probe = '''import sys, time, urllib.request
+url = 'http://127.0.0.1:' + sys.argv[1] + '/auth?state=fixture-state'
+for _ in range(30):
+    try:
+        assert urllib.request.urlopen(url, timeout=2).read() == b'/auth?state=fixture-state'
+        break
+    except OSError: time.sleep(.1)
+else: raise AssertionError('OAuth relay did not become reachable')
+'''
+        run(['docker', 'run', '--rm', '--network', 'host', '--entrypoint', 'python3', image, '-c', probe, binding['HostPort']])
+        print('PASS: cloud OAuth relay reaches container loopback through host-loopback-only publication')
+    finally:
+        subprocess.run(['docker', 'rm', '-f', name], capture_output=True)
+
+
 def main():
     assert os.environ.get('WORKBENCHES_RUNTIME_TEST') == '1', 'Use the tools-runtime Compose service'
     suffix = str(os.getpid()) + '-' + uuid.uuid4().hex[:8]
@@ -126,7 +160,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='workbenches-runtime-test-') as temporary:
         home = Path(temporary)
         binary = home / 'minimal-bin'; binary.mkdir()
-        # Simulate a fresh workstation: the four setup executables are absent.
+        # Simulate a fresh workstation: setup executables are absent.
         for name in ('bash', 'sh', 'docker', 'uname', 'id', 'dirname', 'basename', 'stat',
                      'ps', 'touch', 'cksum', 'readlink', 'mkdir', 'mktemp', 'sleep', 'ln', 'rm', 'mv',
                      'cat', 'chmod', 'date', 'whoami', 'hostname', 'ls', 'tail', 'xargs',
@@ -165,10 +199,11 @@ esac
         try:
             driver = '''set -e
 source "$1/scripts/lib/setup-prerequisites.sh"
-for tool in python3 jq git curl; do ! command -v "$tool" || exit 31; done
+for tool in python3 jq git curl rclone; do ! command -v "$tool" || exit 31; done
 ensure_workstation_requirements || exit "$?"
 python3 -c 'import os, pwd; assert pwd.getpwuid(os.getuid()).pw_name == os.environ["USER"]'
 python3 --version
+rclone version
 python3 -I -c 'import workbenches_host as host; assert host.which("native-fixture")'
 python3 "$1/scripts/credential-sync.py" --status
 jq -n 'true'
@@ -185,6 +220,14 @@ except OSError:
     pass
 else:
     raise AssertionError('Native path probe accepted a missing parent')
+from pathlib import Path
+manifest = Path.home() / 'host-only-profiles.json'
+manifest.write_text('{"version":1,"profiles":[]}')
+result = host.run(['@profile-file', 'read', str(manifest)], capture_output=True, text=True)
+assert result.returncode == 0 and result.stdout == manifest.read_text(), result
+result = host.run(['@profile-file', 'read', str(Path.home())], capture_output=True)
+assert result.returncode != 0
+print('Native profile-file boundary passed')
 print('Native command boundary passed')
 long = host.run(['bash', '-c', 'sleep 31; printf long-native-command-completed'],
                 capture_output=True, text=True, timeout=60)
@@ -211,6 +254,10 @@ assert native_action('copy', 'Public client; device authorization enabled', host
 import pathlib
 assert (pathlib.Path.home() / 'github-browser-url').read_text() == 'https://identity.example/admin'
 assert (pathlib.Path.home() / 'github-device-code').read_text() == 'Public client; device authorization enabled'
+import subprocess
+subprocess.run(['/opt/workbenches/rclone-open', 'http://127.0.0.1:53682/auth?state=fixture-state'], cwd=pathlib.Path.home(), check=True)
+assert (pathlib.Path.home() / 'github-browser-url').read_text() == 'http://127.0.0.1:53682/auth?state=fixture-state'
+(pathlib.Path.home() / 'browser-url').unlink()
 client = GitHub(host)
 assert client.discover()[0]['login'] == 'fixture-user'
 connection = {'id': 101, 'login': 'fixture-user', 'authSource': 'native'}
@@ -238,14 +285,62 @@ else: raise AssertionError('Native login did not finish')
 assert pathlib.Path(str(progress) + '.exit').read_text().strip() == '0'
 assert client.command('current', config).returncode == 0
 print('Native GitHub boundary passed')
+import cloud_profiles as cloud
+import threading, os
+scope = {'id': 'personal', 'name': 'Disposable personal'}
+outcomes = []
+def connect_fixture():
+    try: cloud.connect(scope, 'onedrive', 'Fixture Drive')
+    except ValueError: outcomes.append('denied')
+    except BaseException: outcomes.append('unexpected')
+worker = threading.Thread(target=connect_fixture, daemon=True)
+worker.start()
+try:
+    for _ in range(300):
+        url = (pathlib.Path.home() / 'github-browser-url').read_text()
+        if url.startswith('http://127.0.0.1:53682/auth?state='): break
+        if not worker.is_alive(): raise AssertionError('Cloud browser did not start: ' + str(outcomes))
+        time.sleep(.1)
+    else: raise AssertionError('Cloud browser did not open')
+    image = subprocess.check_output(['docker', 'inspect', os.environ['WORKBENCHES_TOOLS_CONTAINER'], '--format', '{{.Image}}'], text=True).strip()
+    probe = """import sys, urllib.request, urllib.error, urllib.parse
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args): return None
+url = sys.argv[1]
+try: urllib.request.build_opener(NoRedirect).open(url, timeout=5)
+except urllib.error.HTTPError as error:
+    assert error.code == 307
+    target = urllib.parse.urlsplit(error.headers['Location'])
+    assert target.hostname == 'login.microsoftonline.com'
+    scopes = urllib.parse.parse_qs(target.query)['scope'][0].split()
+    assert 'Files.Read' in scopes and not any('Write' in scope for scope in scopes)
+else: raise AssertionError('Expected local redirect only')
+state = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)['state'][0]
+callback = 'http://127.0.0.1:53682/?' + urllib.parse.urlencode({'state':state, 'error':'access_denied'})
+try: urllib.request.urlopen(callback, timeout=5)
+except urllib.error.HTTPError as error: assert error.code == 400
+"""
+    subprocess.run(['docker', 'run', '--rm', '--network', 'host', '--entrypoint', 'python3', image, '-c', probe, url], check=True)
+    worker.join(timeout=15)
+    assert not worker.is_alive() and outcomes == ['denied'], outcomes
+    assert cloud.load(scope) == {'version': 1, 'connections': [], 'sources': []}
+    print('Actual Rclone browser RPC, read-only consent redirect, denied callback and cleanup passed')
+finally:
+    if worker.is_alive():
+        for directory in cloud.scope_root(scope).glob('[0-9a-f]' * 32):
+            subprocess.run(['docker', 'rm', '-f', 'workbenches-cloud-login-' + directory.name], capture_output=True)
+        worker.join(timeout=10)
+assert client.open_browser()  # Restore the GitHub fixture's independent postcondition.
 GITHUB
 [[ "$(cat "$HOME/github-browser-url")" == https://github.com/login/device ]]
 [[ "$(cat "$HOME/github-device-code")" == ABCD-1234 ]]
 '''
             output = run(['/bin/bash', '-c', command, 'native-github', str(ROOT)], env=env, cwd=ROOT)
             assert 'Native GitHub boundary passed' in output
+            assert 'Actual Rclone browser RPC, read-only consent redirect, denied callback and cleanup passed' in output
             assert 'fixture-private-token' not in output
             print('PASS: native GitHub account discovery/verification and browser/clipboard through Tools')
+            print('PASS: actual Rclone browser sign-in, read-only consent redirect, denied callback and cleanup')
             prefix = home / '.local'
             package = prefix / 'lib/node_modules/@openai/codex'
             package.mkdir(parents=True)
@@ -318,7 +413,7 @@ python3 "$2" "$1" "$3"
             print('PASS: native bench Docker adapter uses container Python without recursion')
             print('PASS: bench setup uses native host paths and container Python')
             print('PASS: host application discovery and native npm removal through Tools')
-            print('PASS: Docker-only bootstrap, four tools, stdin, and literal native-host calls')
+            print('PASS: Docker-only bootstrap, five tools, stdin, and literal native-host calls')
             services = ROOT / 'scripts/manage-setup-services.sh'
             state = lambda role: run(['/bin/bash', str(services), 'status', role], env=env)
             assert state('tools') == 'up'
@@ -329,6 +424,7 @@ python3 "$2" "$1" "$3"
             assert original == run(['docker', 'inspect', tools, '--format', '{{.Id}}'])
             assert state('tools') == 'up'
             print('PASS: Tools Up/Down/Missing and restart preserves the container')
+            check_cloud_callback(run(['docker', 'inspect', tools, '--format', '{{.Image}}']))
             # Exercise the actual launcher; Q must stop before any installation.
             master, slave = pty.openpty()
             process = subprocess.Popen(['/bin/bash', str(ROOT / 'setup.sh')], cwd=ROOT, env=env,

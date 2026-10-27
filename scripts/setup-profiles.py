@@ -106,7 +106,7 @@ def edit(profile, data):
         if company:
             print('C Company sign-in   R Connection setup   S Local sign-out   I Import enrollment')
             print('Y Company credential synchronization')
-        print('A AI accounts   B Back   Q Cancel')
+        print('A AI accounts   F Profile manifest files   B Back   Q Cancel')
         choice = ask('Action', 'b').lower()
         if choice == 'b':
             return
@@ -145,16 +145,10 @@ def edit(profile, data):
             propagate_cancel(result.returncode)
         elif choice == 's' and company:
             account(profile, ['--logout'])
+        elif choice == 'f':
+            ai_accounts(profile, default_identity(profile), data)
         elif choice == 'a':
-            print('AI provider sign-in and vault grants are separate from company/GitHub sign-in.')
-            env = dict(os.environ, WORKBENCHES_IDENTITY_EMAIL=profile['email'],
-                       WORKBENCHES_IDENTITY_NAME=profile['name'],
-                       WORKBENCHES_IDENTITY_SCOPE='personal' if profile['id'] == 'personal' else 'organization')
-            # Do not inherit the provider/route chosen for a different identity.
-            for key in ('WORKBENCHES_SELECTED_PROVIDERS', 'WORKBENCHES_AUTH_ROUTE', 'WORKBENCHES_AUTH_ROUTE_FILE'):
-                env.pop(key, None)
-            result = subprocess.run(['bash', str(HERE / 'setup-ai-profiles.sh'), '--interactive'], env=env)
-            propagate_cancel(result.returncode)
+            ai_accounts(profile, default_identity(profile), data)
 
 
 def wizard(data):
@@ -225,16 +219,45 @@ def identity_form(scope, data):
     return identity
 
 
-def ai_accounts(scope, identity):
-    print('AI provider sign-in and vault grants are separate from identity sign-in.')
-    env = dict(os.environ, WORKBENCHES_IDENTITY_EMAIL=identity['email'],
-               WORKBENCHES_IDENTITY_NAME=scope['name'] if scope['id'] != 'personal' else identity['name'],
-               WORKBENCHES_IDENTITY_SCOPE='personal' if scope['id'] == 'personal' else 'organization')
-    for key in ('WORKBENCHES_SELECTED_PROVIDERS', 'WORKBENCHES_AUTH_ROUTE', 'WORKBENCHES_AUTH_ROUTE_FILE'):
-        env.pop(key, None)
-    result = subprocess.run(['bash', str(HERE / 'setup-ai-profiles.sh'), '--interactive'], env=env)
-    propagate_cancel(result.returncode)
 
+def company_form(data):
+    print('\033[H\033[2JADD COMPANY')
+    print('Add your company identity. AI account names and emails come from its profile file.')
+    print('B is available in the next pane; Q cancels this form without saving a partial company.')
+    name = profiles.text(ask('Company name'))
+    address = profiles.email(ask('Company email', profiles.connected_email()))
+    scope = profiles.add_company(data, name, address)
+    profiles.save(data)
+    return scope
+
+def ai_accounts(scope, identity, data=None):
+    from profile_sources import menu, add_account
+    menu(scope, data, manual=lambda: add_account(scope, identity))
+
+
+def ai_onboarding(data):
+    """An explicit profile choice precedes default-login reuse during AI setup."""
+    from profile_tui import choose
+    while True:
+        rows = [('Personal AI profiles', ('personal', data['personal']))]
+        rows += [(s['name'] + ' · Company AI profiles', ('company', s)) for s in data['companies']]
+        rows += [('Add company', ('new', None)), ('Continue setup', ('done', None)),
+                 ('Configure profiles later', ('later', None))]
+        action, item = choose('AI PROFILES · Choose ownership', rows,
+            lambda item: ['Personal logins and company profile sets stay separate.',
+                          'Import from a file, URL, repository or connected drive.',
+                          'An existing default login does not configure a company set.',
+                          'Enter to open; Continue when finished.'])
+        if action == 'b': return ''
+        if action != 'enter': continue
+        kind, scope = item
+        if kind == 'done': return ''
+        if kind == 'later': return 'later'
+        if kind == 'personal':
+            if scope is None: identity_form(None, data); scope = data['personal']
+        elif kind == 'new':
+            scope = company_form(data)
+        ai_accounts(scope, default_identity(scope), data)
 
 def github_details(connection, data):
     from profile_tui import choose
@@ -267,15 +290,17 @@ def identity_menu(scope, identity, data):
     from profile_tui import choose
     while True:
         accounts = [a for a in data['githubAccounts'] if a['id'] in identity['githubIds']]
-        rows = [('@' + a['login'] + (' · Default' if a['id'] == identity['defaultGithubId'] else ''), a) for a in accounts]
+        rows = [('AI profiles · Add or import a profile set', None)] + [('@' + a['login'] + (' · Default' if a['id'] == identity['defaultGithubId'] else ''), a) for a in accounts]
         action, selected = choose(scope['name'] + ' / ' + identity['name'], rows,
             lambda item: [identity['email'], 'Default identity' if scope['defaultIdentityId'] == identity['id'] else 'Additional identity',
                           '', ('@' + item['login'] + ' · ' + item['state']) if item else 'No GitHub accounts linked.',
                           'G connects or links an existing account.', 'Defaults apply inside workBenches only.'],
-            'G Link GitHub  E Edit  D Default GitHub  U Unlink  A AI')
+            'G Link GitHub  E Edit  D Default GitHub  U Unlink  A AI  F AI profiles')
         if action == 'b': return
         if action == 'g': connect_github(scope, data, identity)
-        elif action == 'enter' and selected: github_details(selected, data)
+        elif action == 'enter':
+            if selected is None: ai_accounts(scope, identity, data)
+            else: github_details(selected, data)
         elif action == 'd' and selected:
             identity['defaultGithubId'] = selected['id']; profiles.save(data)
         elif action == 'u' and selected and confirm('Unlink @' + selected['login'] + ' from this identity? Other links and gh credentials stay saved'):
@@ -286,23 +311,29 @@ def identity_menu(scope, identity, data):
             if any(i['id'] != identity['id'] and i['email'].casefold() == address.casefold() for i in scope['identities']):
                 raise ValueError('That email already belongs to an identity in this profile.')
             identity.update(name=name, email=address); profiles.save(data)
-        elif action == 'a': ai_accounts(scope, identity)
+        elif action == 'a': ai_accounts(scope, identity, data)
+        elif action == 'f':
+            ai_accounts(scope, identity if identity else default_identity(scope), data)
 
 
 def scope_menu(scope, data):
     from profile_tui import choose
     while True:
-        rows = [(i['name'] + (' · Default' if i['id'] == scope['defaultIdentityId'] else ''), i) for i in scope['identities']]
+        rows = [('AI profiles · Add or import a profile set', None)] + [(i['name'] + (' · Default' if i['id'] == scope['defaultIdentityId'] else ''), i) for i in scope['identities']]
         company = scope['id'] != 'personal'
         action, identity = choose(scope['name'], rows,
-            lambda item: [item['email'], f'{len(item["githubIds"])} linked GitHub accounts',
+            lambda item: ([scope['name'] + ' · AI profiles', 'Local file, URL, GitHub or connected drive.', 'Review profiles, then recover credentials.'] if item is None else [item['email'], f'{len(item["githubIds"])} linked GitHub accounts',
                           'Enter to edit identity and GitHub links.',
-                          'Company sign-in is separate from GitHub.' if company else 'Your personal identities stay separate from companies.'],
-            'A Add identity  D Default' + ('  C Sign in  R Connection setup  I Enrollment  Y Sync  S Sign out  E Rename' if company else ''))
+                          'Company sign-in is separate from GitHub.' if company else 'Your personal identities stay separate from companies.']),
+            'A Add identity  D Default  F AI profiles' + ('  C Sign in  R Connection setup  I Enrollment  Y Sync  S Sign out  E Rename' if company else ''))
         if action == 'b': return
-        if action == 'enter': identity_menu(scope, identity, data)
+        if action == 'enter':
+            if identity is None: ai_accounts(scope, default_identity(scope), data)
+            else: identity_menu(scope, identity, data)
         elif action == 'a': identity_menu(scope, identity_form(scope, data), data)
-        elif action == 'd': scope['defaultIdentityId'] = identity['id']; profiles.save(data)
+        elif action == 'd' and identity: scope['defaultIdentityId'] = identity['id']; profiles.save(data)
+        elif action == 'f':
+            ai_accounts(scope, default_identity(scope), data)
         elif company and action == 'e':
             name = profiles.text(ask('Company name', scope['name']))
             profiles.add_company({'companies': [s for s in data['companies'] if s['id'] != scope['id']]}, name, scope['email'])
@@ -351,9 +382,7 @@ def manage(data):
             if action == 'a' or action == 'enter' and kind == 'personal':
                 identity = identity_form(data['personal'], data); identity_menu(data['personal'], identity, data)
             elif action == 'c' or action == 'enter' and kind == 'company':
-                name = profiles.text(ask('Company name'))
-                address = profiles.email(ask('Company email', profiles.connected_email()))
-                scope = profiles.add_company(data, name, address); profiles.save(data); scope_menu(scope, data)
+                scope = company_form(data); scope_menu(scope, data)
             elif action == 'g' or action == 'enter' and kind == 'library':
                 from profile_github import GitHub, select_account
                 connection = select_account(GitHub(host), data)
@@ -380,6 +409,7 @@ def main():
     cancellation_signals()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--summary', action='store_true')
+    parser.add_argument('--ai-onboarding', type=Path)
     args = parser.parse_args()
     try:
         data = profiles.load()
@@ -400,6 +430,11 @@ def main():
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 raise ValueError('Another Profiles action is running. Close it before trying again.') from None
+            if args.ai_onboarding:
+                route = ai_onboarding(data)
+                fd = os.open(args.ai_onboarding, os.O_WRONLY | os.O_TRUNC | os.O_NOFOLLOW)
+                with os.fdopen(fd, 'w') as stream: stream.write(route)
+                return 0
             manage(profiles.load())
     except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as error:
         print('Profile setup needs attention: ' + str(error), file=sys.stderr)

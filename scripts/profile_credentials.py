@@ -27,6 +27,8 @@ def entries(providers=None):
         fallback = os.environ.get('CHATGPT_PROFILES_HOME', Path.home() / default) if provider == 'codex' else Path.home() / default
         root = Path(os.environ.get(variable, fallback)) / 'profiles'
         for profile in data.get('profiles', []):
+            if os.environ.get('WORKBENCHES_CREDENTIAL_SCOPE') and profile.get('family') != os.environ['WORKBENCHES_CREDENTIAL_SCOPE']:
+                continue
             # Legacy manifests use family/name; current manifests use profilePath.
             relative = profile.get('profilePath') or profile['name']
             entry = {'enabled': True, 'provider': provider, 'profile': profile['name'],
@@ -55,6 +57,23 @@ def login_email(rows):
                 emails.add(email)
     return next(iter(emails)) if len(emails) == 1 else ''
 
+
+
+def references(rows):
+    """Read only non-secret Key Vault references for the selected metadata rows."""
+    config = Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config')) / 'workbenches'
+    result = {}
+    pattern = RUNTIME.re.compile(r'azure-key-vault://([a-z0-9][a-z0-9-]{1,22}[a-z0-9])/(ai-credential-(?:claude|codex|pi)-[a-z0-9][a-z0-9-]*)')
+    for row in rows:
+        provider = {'codex': 'openai'}.get(row['provider'], row['provider'])
+        file = config / (provider + '-profiles.json')
+        if not file.is_file() or file.stat().st_size > 8 * 1024 * 1024: continue
+        for profile in json.loads(file.read_text()).get('profiles', []):
+            if profile.get('name') != row['profile']: continue
+            reference = profile.get('authentication', {}).get('credentialRef', '')
+            match = pattern.fullmatch(reference)
+            if match: result[(row['provider'], row['profile'])] = match.groups()
+    return result
 
 def present(entry):
     try:

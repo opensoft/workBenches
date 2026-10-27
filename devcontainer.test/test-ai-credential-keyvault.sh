@@ -183,3 +183,24 @@ assert_secret_safe "$output"
 ! grep -q 'keyvault secret show' "$FAKE_AZ_LOG"
 
 printf 'PASS: AI credential Key Vault restore contract\n'
+
+# A local collision suffix must not change the canonical vault profile binding.
+export FAKE_AZ_MODE=ok
+renamed_target="$CLAUDE_PROFILES_HOME/profiles/another-company/team/team-001-2/.credentials.json"
+write_manifest "$renamed_target"
+jq '.entries[0].profile = "team-001-2" | .entries[0].vaultProfile = "team-001"' "$manifest" > "$manifest.next"
+mv "$manifest.next" "$manifest"
+chmod 600 "$manifest"
+output="$($subject restore --manifest "$manifest" --state "$state" 2>&1)"
+assert_secret_safe "$output"
+cmp -s -- "$FAKE_SECRET_FILE" "$renamed_target"
+rm "$renamed_target"
+# An inconsistent canonical binding still fails before retrieving a value.
+jq '.entries[0].vaultProfile = "another-account"' "$manifest" > "$manifest.next"
+mv "$manifest.next" "$manifest"
+chmod 600 "$manifest"
+: > "$FAKE_AZ_LOG"
+if output="$($subject restore --manifest "$manifest" --state "$state" 2>&1)"; then exit 1; fi
+[[ ! -e "$renamed_target" ]]
+! grep -q 'keyvault secret download' "$FAKE_AZ_LOG"
+printf 'PASS: canonical vault binding survives local profile-name collisions\n'

@@ -27,8 +27,8 @@ renew when authorized and supported, and require browser reauthentication after
 expiry/revocation/denied consent. Never promise perpetual login. Connection
 status must distinguish authorization failure from temporary transport failure.
 
-Current GitHub browser login persists isolated gh configurations, but catalog
-discovery/cloning still uses ambient gh/Git in the old onboarding path. Wire the
+Legacy registry discovery/cloning uses ambient gh/Git; feature 161 source imports
+use the selected verified connection with commit-pinned REST reads. Wire the
 selected connection through every discovery/content fetch. Current Keycloak
 company login stores a private session; offline refresh is conditional on opted-in
 company sync. Neither path implements Microsoft Graph/Google Drive authorization.
@@ -58,3 +58,48 @@ References:
 - [Keycloak external identity-provider tokens](https://www.keycloak.org/docs/26.8.0/server_development/#_identity_brokering_apis)
 - [Google native application OAuth](https://developers.google.com/identity/protocols/oauth2/native-app)
 - [Microsoft permissions and scopes](https://learn.microsoft.com/en-us/entra/identity-platform/scopes-oidc)
+
+## Company manifest source TUI and native file selection
+
+Brett's refinement, 2026-10-26: entering a company must expose a designed
+profile-source pane rather than an unexplained URL prompt. Show the selected
+company, saved source, linked account, last successful import and profile counts.
+Offer explicit actions for **Choose local file**, **Enter file URL**,
+**GitHub repository**, and **Refresh saved source**. The source operation does
+not require company IdP sign-in when that source does not need it.
+
+Use a two-pane layout at normal widths: source methods/actions on the left,
+selected source details and a short explanation on the right. Stack these panes
+on narrow terminals. Keep navigation hints visible; B returns one step and Q
+cancels without modifying saved state. Suspend raw keyboard mode and restore the
+cursor before editable path/URL input, external dialogs or browser actions;
+redraw the complete TUI on return.
+
+**Choose local file** explicitly requests a native open-file dialog on the
+engineer's local desktop, filtered for supported JSON manifests. Use the
+existing host-action architecture for a narrowly scoped file-selection action;
+a picker launched inside Tools must select host files, not container files.
+Qualify Linux desktop, macOS and Windows/WSL routing separately. Do not assume a
+graphical session exists. Always offer **Enter local path** for SSH, headless
+sessions or unavailable native integration. Dialog cancellation returns to the
+source pane without changing its saved path; absence or failure gives a clear
+fallback rather than installing desktop software implicitly.
+
+**Enter file URL** uses a labeled editable HTTPS field and explains whether the
+source is public or needs a supported provider connection. A private source
+selects or creates the appropriate browser-authorized connection. Never turn a
+permission failure into a request for pasted credentials. Present loading,
+authorization failure, unsupported source and malformed file states in context.
+
+Both paths lead to the same bounded read, schema/ownership/path validation and
+review step. Show source, company, selected providers, profile counts and naming
+conflicts before **Import**. Applying writes reviewed local metadata only;
+credential recovery is a separate subsequent action. Retain the source locator
+and connection reference only after confirmed successful import. Do not copy
+secret values into source records or previews.
+
+Acceptance covers native-picker success/cancel/unavailable/error, host/container
+path translation, manual paths with spaces, invalid files/URLs, narrow terminals,
+full keyboard navigation, browser return and preservation of unrelated profiles.
+Feature 161 implements this pane and native routing with fixture coverage.
+Attended platform dialogs and production provider qualification remain pending.

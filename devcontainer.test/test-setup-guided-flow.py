@@ -69,7 +69,7 @@ class GuidedFlowTests(unittest.TestCase):
         self.home = Path(self.temp.name)
         self.config = self.home / '.config/workbenches'
         self.config.mkdir(parents=True)
-        self.env = dict(os.environ, HOME=str(self.home), XDG_CONFIG_HOME=str(self.home / '.config'))
+        self.env = dict(os.environ, HOME=str(self.home), XDG_CONFIG_HOME=str(self.home / '.config'), XDG_CACHE_HOME=str(self.home / '.cache'))
         for key in list(self.env):
             if key.startswith(('WORKBENCHES_', 'CLAUDE_PROFILES_', 'CODEX_', 'CHATGPT_PROFILES_', 'PI_PROFILES_', 'AI_CREDENTIAL_', 'DOCKER_', 'OPENAI_', 'ANTHROPIC_')):
                 self.env.pop(key)
@@ -226,9 +226,7 @@ class GuidedFlowTests(unittest.TestCase):
 
     def test_direct_or_later_auth_does_not_require_profiles_or_prompt_for_vault(self):
         for answer in ('1', '3'):
-            replies = [('Authentication route', answer + '\n')]
-            if answer == '1':
-                replies.append(('Set up separate AI profiles', 'n\n'))
+            replies = [('AI PROFILES · Choose ownership', 'jj\r'), ('Authentication route', answer + '\n')]
             status, output = terminal_run(['bash', str(ROOT / 'scripts/setup-ai-profiles.sh'), '--interactive'],
                                          dict(self.env, WORKBENCHES_SELECTED_PROVIDERS='openai'), replies)
             self.assertEqual(status, 0, output)
@@ -467,7 +465,7 @@ process_selections''', input='\n', PATH=self.fake_npm(self.home, failure=13), WO
         target.parent.mkdir()
         target.write_bytes(self.payload)
         status, output = terminal_run(['bash', str(ROOT / 'scripts/setup-ai-profiles.sh'), '--interactive'],
-                                     dict(self.env, WORKBENCHES_SELECTED_PROVIDERS='openai'), [])
+                                     dict(self.env, WORKBENCHES_SELECTED_PROVIDERS='openai'), [('AI PROFILES · Choose ownership', 'jj\r')])
         self.assertEqual(status, 0, output)
         self.assertNotIn('Authentication route [1]', output)
         self.assertNotIn('Set up separate AI profiles', output)

@@ -20,6 +20,17 @@ done
 
 selected="${WORKBENCHES_SELECTED_PROVIDERS:-}"
 route="${WORKBENCHES_AUTH_ROUTE:-}"
+source_pane_used=false
+if [[ "$mode" == interactive && -t 0 && -t 1 && "${WORKBENCHES_PROFILE_SOURCE_FLOW:-}" != 1 ]]; then
+  source_route="$(mktemp)"
+  trap 'rm -f "$source_route"' EXIT
+  python3 "$repo_dir/scripts/setup-profiles.py" --ai-onboarding "$source_route"
+  source_pane_used=true
+  source_choice="$(cat "$source_route")"
+  rm -f "$source_route"
+  trap - EXIT
+  if [[ "$source_choice" == later ]]; then route=later; fi
+fi
 if [[ -n "$selected" && -t 0 && -t 1 && -z "$route" ]]; then
   route_file="$(mktemp)"
   trap 'rm -f "$route_file"' EXIT
@@ -27,12 +38,13 @@ if [[ -n "$selected" && -t 0 && -t 1 && -z "$route" ]]; then
   route="$(cat "$route_file")"
   if [[ -n "${WORKBENCHES_AUTH_ROUTE_FILE:-}" ]]; then printf '%s' "$route" > "$WORKBENCHES_AUTH_ROUTE_FILE"; fi
 fi
+if [[ -n "${WORKBENCHES_AUTH_ROUTE_FILE:-}" && -n "$route" ]]; then printf '%s' "$route" > "$WORKBENCHES_AUTH_ROUTE_FILE"; fi
 if [[ "$route" == vault:* ]]; then
   export WORKBENCHES_VAULT_SERVICE="${route#vault:}"
   route=vault
 fi
 export WORKBENCHES_AUTH_ROUTE="$route"
-if [[ "$mode" == interactive && "$route" != later && "$route" != existing && ( -z "$selected" || ",$selected," == *,openai,* || ",$selected," == *,claude,* || ",$selected," == *,pi,* ) ]]; then
+if [[ "$mode" == interactive && "$source_pane_used" != true && "$route" != later && "$route" != existing && ( -z "$selected" || ",$selected," == *,openai,* || ",$selected," == *,claude,* || ",$selected," == *,pi,* ) ]]; then
   if [[ "$route" == vault ]]; then export WORKBENCHES_REQUIRE_PROFILE=1; fi
   python3 "$repo_dir/scripts/onboard-ai-profiles.py"
 fi

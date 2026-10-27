@@ -47,25 +47,30 @@ code remains opt-in; it is not a prerequisite or acceptance claim for the
 v1.6.2 direct recovery route. This scope decision does not remove inherited code
 or change the historical v1.6.0 release notes.
 
-## Planned manifest-source scope — approved 2026-10-25
+## Profile sources and credential management
 
-Workstation access is local to the computer running workBenches in v1.6.2.
-Personal and company scopes are to support manifest import from local/hosted
-files or a GitHub repository, with a remembered source and linked connection.
-Private remote source authentication is browser-only; local files use filesystem
-permissions and public files need no artificial sign-in. OneDrive/Google Drive
-links require provider-specific authenticated retrieval, not just a copied URL.
+Feature 161 implements a shared personal/company AI profile pane in the existing
+1.6.x style: native file selection/manual path, public HTTPS, selected-account
+GitHub imports, saved-source refresh and reviewed profile/provider selection.
+It integrates feature 160's Tools Rclone browser connections and drive browsing.
+Company-set import remains available even when a standard provider login exists.
+Manual single-account setup uses the same review instead of another ownership
+questionnaire. Active/planned/disabled metadata and local-name collisions are
+handled explicitly; cancellation and failed application preserve manifests.
 
-Existing GitHub browser connections and company Keycloak sessions provide part
-of the foundation. The scoped source-import/refresh workflow, binding repository
-reads to the chosen GitHub connection, and Microsoft/Google file connectors are
-not implemented by the company-connection wizard. Do not claim this expanded
-scope is complete. See the [governed proposal](../openspec/changes/profile-manifest-sources/proposal.md).
-Whether updates also include publishing remote edits is pending clarification.
+Company GitHub catalogs and user grants are read with the selected verified
+account at one immutable commit. Personal/company source records and private
+credential mappings are separate; scoped Azure recovery uses device-code login
+and imported vault-reference defaults. Alias mappings retain the canonical
+vault tag identity after a local profile name collision. Credentials are never
+part of imported metadata.
 
-Workstation-to-workstation communication is deferred to v1.8 through a service
-shipped with workBenches, respecting openProfiler's reusable profile-management
-ownership. No peer service is required for v1.6.2 file/repository imports.
+Sharing-link resolution and remote editing/publishing are not implemented.
+Native dialog routing has fixture coverage; attended platform dialogs and live
+vault/provider acceptance remain required. Google browser consent requires its
+administrator OAuth app; see [profile sources](cloud-profile-import.md).
+Workstation-to-workstation service integration remains targeted for v1.8,
+respecting openProfiler ownership. This is development source, not a release.
 
 ## Guided company connection
 
