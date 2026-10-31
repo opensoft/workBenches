@@ -62,6 +62,11 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     # GPG for repository keys
     gpg \
     ca-certificates \
+    # PostgreSQL 16, server and client, for the real-database tests of
+    # opensoft/openRepoTools#165. The server binaries live in
+    # /usr/lib/postgresql/16/bin, and nothing in a bench starts a server.
+    postgresql-16 \
+    postgresql-client-16 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
